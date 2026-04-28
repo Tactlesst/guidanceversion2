@@ -89,28 +89,114 @@ if (in_array($role, ['student','examinee'])) {
     </div>
 </div>
 
-<?php elseif (in_array($role, ['student','examinee'])): ?>
-<div class="mb-5">
-    <h1 class="text-2xl font-bold text-primary">Student Portal</h1>
-    <p class="text-sm text-gray-500">Welcome back, <span class="font-semibold"><?= htmlspecialchars($user_info['first_name'] ?? 'Student') ?></span>! Here's your student dashboard.</p>
+<?php elseif ($role === 'examinee'): ?>
+<!-- Examinee Portal Header -->
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-primary mb-1">Examinee Portal</h1>
+    <p class="text-sm text-gray-500">Welcome back, <span class="font-semibold text-gray-700"><?= htmlspecialchars($user_info['first_name'] ?? 'Examinee') ?></span>! Here's your examinee dashboard.</p>
 </div>
 
+<!-- Entrance Examination Card -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-5">
+    <div class="p-5">
+        <div class="flex items-center gap-2 text-primary font-bold text-base mb-2">
+            <i class="fas fa-clipboard-check text-lg"></i>
+            <span>Entrance Examination</span>
+        </div>
+        <p class="text-sm text-gray-500">Apply for entrance examination to SRCB.</p>
+        <div class="mt-4 flex flex-wrap gap-2">
+            <a href="layout.php?page=entrance_exam/book_exam" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-dark transition-colors shadow-sm">
+                <i class="fas fa-calendar-plus"></i>
+                <span>Book Exam</span>
+            </a>
+            <a href="layout.php?page=entrance_exam/book_exam" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-primary text-primary text-sm font-semibold hover:bg-primary hover:text-white transition-colors">
+                <i class="fas fa-eye"></i>
+                <span>My Application Status</span>
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- My Information Card (Read-only for examinees) -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center gap-2 text-primary font-bold text-base">
+        <i class="fas fa-id-card"></i>
+        <span>My Information</span>
+    </div>
+    <div class="p-5">
+        <div class="grid md:grid-cols-2 gap-x-8 gap-y-4">
+            <!-- Left Column -->
+            <div class="space-y-4">
+                <div class="flex items-start gap-3">
+                    <div class="w-5 flex justify-center text-primary mt-0.5">
+                        <i class="fas fa-user text-sm"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-400 font-medium">Name</div>
+                        <div class="text-sm font-bold text-gray-800"><?= htmlspecialchars(($user_info['first_name'] ?? '').' '.($user_info['last_name'] ?? '')) ?></div>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3">
+                    <div class="w-5 flex justify-center text-primary mt-0.5">
+                        <i class="fas fa-envelope text-sm"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-400 font-medium">Email</div>
+                        <div class="text-sm font-bold text-gray-800"><?= htmlspecialchars($user_info['email'] ?? '—') ?></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Right Column -->
+            <div class="space-y-4">
+                <div class="flex items-start gap-3">
+                    <div class="w-5 flex justify-center text-primary mt-0.5">
+                        <i class="fas fa-graduation-cap text-sm"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-400 font-medium">Grade Level Applying</div>
+                        <div class="text-sm font-bold text-gray-800"><?= htmlspecialchars($grade_level ?: '—') ?></div>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3">
+                    <div class="w-5 flex justify-center text-primary mt-0.5">
+                        <i class="fas fa-user-tag text-sm"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-400 font-medium">Examinee Type</div>
+                        <div class="text-sm font-bold text-gray-800"><?= htmlspecialchars($user_info['examinee_type'] ?? '—') ?></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- No Update Profile button for examinees -->
+    </div>
+</div>
+
+<?php elseif ($role === 'student'): ?>
+<!-- Student Portal Header -->
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-primary mb-1">Student Portal</h1>
+    <p class="text-sm text-gray-500">Welcome back, <span class="font-semibold text-gray-700"><?= htmlspecialchars($user_info['first_name'] ?? 'Student') ?></span>! Here's your student dashboard.</p>
+</div>
+
+<!-- Cards Grid -->
 <div class="grid md:grid-cols-2 gap-5 mb-5">
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100">
+    <!-- Personal Data Sheet Card -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div class="p-5">
-            <div class="flex items-center gap-2 text-primary font-semibold text-sm">
-                <i class="fas fa-file-alt"></i>
+            <div class="flex items-center gap-2 text-primary font-bold text-base mb-2">
+                <i class="fas fa-file-alt text-lg"></i>
                 <span>Personal Data Sheet</span>
             </div>
-            <p class="text-sm text-gray-500 mt-2">Fill out or update your personal information.</p>
+            <p class="text-sm text-gray-500">Fill out or update your personal information.</p>
             <div class="mt-4">
                 <?php if($pds_status === 'completed'): ?>
-                    <a href="layout.php?page=view_pds" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-dark transition-colors">
+                    <a href="layout.php?page=view_pds" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-dark transition-colors shadow-sm">
                         <i class="fas fa-eye"></i>
                         <span>View PDS</span>
                     </a>
                 <?php else: ?>
-                    <a href="layout.php?page=fill_pds" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-dark transition-colors">
+                    <a href="layout.php?page=fill_pds" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-dark transition-colors shadow-sm">
                         <i class="fas fa-pen-to-square"></i>
                         <span>Fill out PDS</span>
                     </a>
@@ -119,20 +205,21 @@ if (in_array($role, ['student','examinee'])) {
         </div>
     </div>
 
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100">
+    <!-- Counseling Services Card -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div class="p-5">
-            <div class="flex items-center gap-2 text-primary font-semibold text-sm">
-                <i class="fas fa-comments"></i>
+            <div class="flex items-center gap-2 text-primary font-bold text-base mb-2">
+                <i class="fas fa-comments text-lg"></i>
                 <span>Counseling Services</span>
             </div>
-            <p class="text-sm text-gray-500 mt-2">Schedule counseling sessions with our guidance counselors.</p>
+            <p class="text-sm text-gray-500">Schedule counseling sessions with our guidance counselors.</p>
             <div class="mt-4 flex flex-wrap gap-2">
-                <a href="layout.php?page=book_appointment" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-dark transition-colors">
+                <a href="layout.php?page=book_appointment" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-dark transition-colors shadow-sm">
                     <i class="fas fa-calendar-plus"></i>
                     <span>Book Appointment</span>
                 </a>
                 <a href="layout.php?page=view_appointments" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-primary text-primary text-sm font-semibold hover:bg-primary hover:text-white transition-colors">
-                    <i class="fas fa-calendar"></i>
+                    <i class="fas fa-eye"></i>
                     <span>View Appointments</span>
                 </a>
             </div>
@@ -140,63 +227,78 @@ if (in_array($role, ['student','examinee'])) {
     </div>
 </div>
 
-<div class="bg-white rounded-xl shadow-sm border border-gray-100">
-    <div class="px-5 py-4 border-b border-gray-100 flex items-center gap-2 text-primary font-semibold text-sm">
+<!-- My Information Card -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center gap-2 text-primary font-bold text-base">
         <i class="fas fa-id-card"></i>
         <span>My Information</span>
     </div>
     <div class="p-5">
-        <div class="grid md:grid-cols-2 gap-6">
-            <div class="space-y-3">
+        <div class="grid md:grid-cols-2 gap-x-8 gap-y-4">
+            <!-- Left Column -->
+            <div class="space-y-4">
                 <div class="flex items-start gap-3">
-                    <i class="fas fa-user text-primary mt-0.5"></i>
+                    <div class="w-5 flex justify-center text-primary mt-0.5">
+                        <i class="fas fa-user text-sm"></i>
+                    </div>
                     <div>
-                        <div class="text-xs text-gray-500">Name</div>
-                        <div class="text-sm font-semibold text-gray-800"><?= htmlspecialchars(($user_info['first_name'] ?? '').' '.($user_info['last_name'] ?? '')) ?></div>
+                        <div class="text-xs text-gray-400 font-medium">Name</div>
+                        <div class="text-sm font-bold text-gray-800"><?= htmlspecialchars(($user_info['first_name'] ?? '').' '.($user_info['last_name'] ?? '')) ?></div>
                     </div>
                 </div>
                 <div class="flex items-start gap-3">
-                    <i class="fas fa-envelope text-primary mt-0.5"></i>
+                    <div class="w-5 flex justify-center text-primary mt-0.5">
+                        <i class="fas fa-envelope text-sm"></i>
+                    </div>
                     <div>
-                        <div class="text-xs text-gray-500">Email</div>
-                        <div class="text-sm font-semibold text-gray-800"><?= htmlspecialchars($user_info['email'] ?? '—') ?></div>
+                        <div class="text-xs text-gray-400 font-medium">Email</div>
+                        <div class="text-sm font-bold text-gray-800"><?= htmlspecialchars($user_info['email'] ?? '—') ?></div>
                     </div>
                 </div>
                 <div class="flex items-start gap-3">
-                    <i class="fas fa-id-badge text-primary mt-0.5"></i>
+                    <div class="w-5 flex justify-center text-primary mt-0.5">
+                        <i class="fas fa-id-badge text-sm"></i>
+                    </div>
                     <div>
-                        <div class="text-xs text-gray-500">Student ID</div>
-                        <div class="text-sm font-semibold text-gray-800"><?= htmlspecialchars($student_profile['student_id'] ?? '—') ?></div>
+                        <div class="text-xs text-gray-400 font-medium">Student ID</div>
+                        <div class="text-sm font-bold text-gray-800"><?= htmlspecialchars($student_profile['student_id'] ?? '—') ?></div>
                     </div>
                 </div>
             </div>
-            <div class="space-y-3">
+            <!-- Right Column -->
+            <div class="space-y-4">
                 <div class="flex items-start gap-3">
-                    <i class="fas fa-layer-group text-primary mt-0.5"></i>
+                    <div class="w-5 flex justify-center text-primary mt-0.5">
+                        <i class="fas fa-graduation-cap text-sm"></i>
+                    </div>
                     <div>
-                        <div class="text-xs text-gray-500">Grade Level</div>
-                        <div class="text-sm font-semibold text-gray-800"><?= htmlspecialchars($grade_level ?: '—') ?></div>
+                        <div class="text-xs text-gray-400 font-medium">Grade Level</div>
+                        <div class="text-sm font-bold text-gray-800"><?= htmlspecialchars($grade_level ?: '—') ?></div>
                     </div>
                 </div>
                 <div class="flex items-start gap-3">
-                    <i class="fas fa-building-columns text-primary mt-0.5"></i>
+                    <div class="w-5 flex justify-center text-primary mt-0.5">
+                        <i class="fas fa-building-columns text-sm"></i>
+                    </div>
                     <div>
-                        <div class="text-xs text-gray-500">Department</div>
-                        <div class="text-sm font-semibold text-gray-800"><?= htmlspecialchars($department ?: '—') ?></div>
+                        <div class="text-xs text-gray-400 font-medium">Department</div>
+                        <div class="text-sm font-bold text-gray-800"><?= htmlspecialchars($department ?: '—') ?></div>
                     </div>
                 </div>
                 <div class="flex items-start gap-3">
-                    <i class="fas fa-graduation-cap text-primary mt-0.5"></i>
+                    <div class="w-5 flex justify-center text-primary mt-0.5">
+                        <i class="fas fa-book text-sm"></i>
+                    </div>
                     <div>
-                        <div class="text-xs text-gray-500">Program</div>
-                        <div class="text-sm font-semibold text-gray-800"><?= htmlspecialchars(($program ?: $strand) ?: '—') ?></div>
+                        <div class="text-xs text-gray-400 font-medium">Program</div>
+                        <div class="text-sm font-bold text-gray-800"><?= htmlspecialchars(($program ?: $strand) ?: '—') ?></div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="mt-5">
-            <a href="layout.php?page=profile" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-primary text-primary text-sm font-semibold hover:bg-primary hover:text-white transition-colors">
+        <div class="mt-5 pt-4 border-t border-gray-100">
+            <a href="layout.php?page=view_pds" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-primary text-primary text-sm font-semibold hover:bg-primary hover:text-white transition-colors">
                 <i class="fas fa-user-pen"></i>
                 <span>Update Profile</span>
             </a>

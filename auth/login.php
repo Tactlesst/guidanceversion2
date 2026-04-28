@@ -190,7 +190,7 @@ list($attempts, $remaining_attempts, $lockout_time, $can_attempt) = getLockout()
 
             <div class="text-center space-y-2 mb-3">
                 <a href="../homepage.php" class="block text-primary font-semibold hover:text-accent transition-colors text-xs"><i class="fas fa-house mr-1"></i>View Announcements Homepage</a>
-                <a href="register.php" class="block text-primary font-semibold hover:text-accent transition-colors text-xs"><i class="fas fa-user-plus mr-1"></i>Register for Entrance Exam (New Student and Transferee only)</a>
+                <a href="register.php" class="block text-primary font-semibold hover:text-accent transition-colors text-xs"><i class="fas fa-user-plus mr-1"></i>Register as Examinee (New Student / Transferee)</a>
             </div>
 
             <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-3.5 border-l-3 border-primary">
@@ -218,9 +218,14 @@ list($attempts, $remaining_attempts, $lockout_time, $can_attempt) = getLockout()
                 Swal.fire({
                     icon: 'success', title: 'Welcome Back!',
                     html: `<div style="text-align:center;margin:15px 0"><h4 style="color:#163269;margin-bottom:10px;font-weight:600">Hello, <?= $wn ?>!</h4><p style="color:#718096;font-size:15px;margin:0">Logged in as <?= $ur ?></p><p style="color:#4ade80;font-size:13px;margin-top:8px;font-weight:500">Redirecting to dashboard...</p></div>`,
-                    showConfirmButton: false, timer: 3000, timerProgressBar: true,
+                    showConfirmButton: true, confirmButtonText: 'Continue to Dashboard', confirmButtonColor: '#163269',
+                    timer: 3000, timerProgressBar: true,
                     willClose: () => { location.href = '../dashboard/layout.php'; }
-                }).then(() => { location.href = '../dashboard/layout.php'; });
+                }).then((result) => {
+                    if (result.isConfirmed || result.dismiss === Swal.DismissReason.timer) {
+                        location.href = '../dashboard/layout.php';
+                    }
+                });
             }, 300);
             return;
         <?php endif; ?>

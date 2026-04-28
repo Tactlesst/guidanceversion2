@@ -84,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $dashboard_url = $in_layout ? 'layout.php?page=dashboard' : '../dashboard/index.php';
 
-if (!$in_layout) {
+if (!$in_layout)
 ?>
 <!DOCTYPE html>
 <html lang="en">
