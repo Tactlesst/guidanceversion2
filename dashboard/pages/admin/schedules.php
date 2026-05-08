@@ -84,6 +84,7 @@ $event_labels=['pds_period'=>'PDS Period','entrance_exam'=>'Entrance Exam','coun
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
         <div class="p-4 border-b flex justify-between items-center">
             <h2 class="text-lg font-bold text-gray-800"><?= date('F Y') ?></h2>
+            <span class="text-xs text-gray-500"><i class="fas fa-info-circle mr-1"></i>Click on any date to create a schedule</span>
         </div>
         <div class="grid grid-cols-7 text-center text-xs font-medium text-gray-500 border-b">
             <div class="py-2">Sun</div><div class="py-2">Mon</div><div class="py-2">Tue</div><div class="py-2">Wed</div><div class="py-2">Thu</div><div class="py-2">Fri</div><div class="py-2">Sat</div>
@@ -103,13 +104,13 @@ $event_labels=['pds_period'=>'PDS Period','entrance_exam'=>'Entrance Exam','coun
             $is_holiday=$holiday->isHoliday($ds);
             $day_events=$events_map[$ds]??[];
         ?>
-            <div class="min-h-[90px] border-b border-r p-1 <?= $is_today?'bg-blue-50':($is_holiday?'bg-red-50':'') ?>">
+            <div class="min-h-[90px] border-b border-r p-1 <?= $is_today?'bg-blue-50':($is_holiday?'bg-red-50':'') ?> cursor-pointer hover:bg-blue-100 transition-colors" onclick="quickCreateSchedule('<?= $ds ?>')" title="Click to create schedule">
                 <div class="flex justify-between items-center mb-1">
                     <span class="text-sm font-medium <?= $is_today?'bg-primary text-white px-1.5 py-0.5 rounded-full':'text-gray-700' ?>"><?= $day ?></span>
                     <?php if($is_holiday):?><i class="fas fa-umbrella-beach text-red-400 text-xs"></i><?php endif; ?>
                 </div>
                 <?php foreach(array_slice($day_events,0,3) as $ev): $ec=$event_colors[$ev['event_type']]??'bg-gray-500'; ?>
-                <div class="<?= $ec ?> text-white text-xs px-1 py-0.5 rounded mb-0.5 truncate"><?= htmlspecialchars($ev['title']) ?></div>
+                <div class="<?= $ec ?> text-white text-xs px-1 py-0.5 rounded mb-0.5 truncate" onclick="event.stopPropagation(); editSchedule(<?= htmlspecialchars(json_encode($ev)) ?>)"><?= htmlspecialchars($ev['title']) ?></div>
                 <?php endforeach; ?>
                 <?php if(count($day_events)>3):?><div class="text-xs text-gray-400">+<?= count($day_events)-3 ?> more</div><?php endif; ?>
             </div>
@@ -275,5 +276,18 @@ function editSchedule(data){
     document.getElementById('edit_end_date').value=ed.toISOString().split('T')[0];
     document.getElementById('edit_end_time').value=ed.toTimeString().slice(0,5);
     openModal('editScheduleModal');
+}
+
+function quickCreateSchedule(date){
+    // Pre-fill the create modal with the clicked date
+    const createForm = document.querySelector('#createScheduleModal form');
+    const startDateInput = createForm.querySelector('input[name="start_date"]');
+    const endDateInput = createForm.querySelector('input[name="end_date"]');
+    
+    if(startDateInput) startDateInput.value = date;
+    if(endDateInput) endDateInput.value = date;
+    
+    // Open the create modal
+    openModal('createScheduleModal');
 }
 </script>

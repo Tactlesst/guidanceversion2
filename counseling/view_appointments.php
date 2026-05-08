@@ -1,24 +1,68 @@
 <?php
 $in_layout = defined('IN_LAYOUT');
+
 if (!$in_layout) {
     require_once '../config/database.php';
     require_once '../includes/session.php';
+    require_once '../classes/CounselingAppointment.php';
+    require_once '../classes/SystemSettings.php';
     checkLogin();
     checkRole(['student']);
+    
+    $database = new Database();
+    $db = $database->getConnection();
+} else {
+    require_once __DIR__ . '/../classes/CounselingAppointment.php';
+    require_once __DIR__ . '/../classes/SystemSettings.php';
+    // $db is already available from layout.php
 }
+
 $user_info = getUserInfo();
+$counseling = new CounselingAppointment($db);
+$settings = new SystemSettings($db);
 
-try {
-    $db = (new Database())->getConnection();
-} catch (Exception $e) { die("Database connection failed."); }
-
-// Get user's appointments
+// Get user's appointments with enhanced data
 $appointments = [];
 try {
-    $stmt = $db->prepare("SELECT * FROM counseling_appointments WHERE user_id = ? ORDER BY appointment_date DESC, appointment_time DESC");
+    $stmt = $db->prepare("
+        SELECT 
+            ca.*,
+            u.first_name as assigned_advocate_first_name,
+            u.last_name as assigned_advocate_last_name,
+            CONCAT(u.first_name, ' ', u.last_name) as assigned_advocate_name
+        FROM counseling_appointments ca
+        LEFT JOIN users u ON ca.assigned_advocate_id = u.id
+        WHERE ca.user_id = ?
+        ORDER BY ca.appointment_date DESC, ca.appointment_time DESC
+    ");
     $stmt->execute([$user_info['id']]);
-    $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
+    $raw_appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Enhance appointments with reschedule details
+    foreach ($raw_appointments as $app) {
+        $enhanced_app = $app;
+        
+        // If this is a rescheduled appointment, get original appointment details
+        if (!empty($app['original_appointment_id'])) {
+            try {
+                $orig_stmt = $db->prepare("SELECT appointment_date, appointment_time, created_at FROM counseling_appointments WHERE id = ?");
+                $orig_stmt->execute([$app['original_appointment_id']]);
+                $original = $orig_stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($original) {
+                    $enhanced_app['original_date'] = $original['appointment_date'];
+                    $enhanced_app['original_time'] = $original['appointment_time'];
+                    $enhanced_app['rescheduled_by'] = 'Guidance Office';
+                    $enhanced_app['rescheduled_at'] = $app['created_at'];
+                }
+            } catch (Exception $e) {}
+        }
+        
+        $appointments[] = $enhanced_app;
+    }
+} catch (Exception $e) {
+    $appointments = [];
+}
 
 $success_message = $_GET['success'] ?? '';
 $error_message = $_GET['error'] ?? '';

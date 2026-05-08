@@ -64,6 +64,10 @@ if ($_POST && $can_attempt) {
             'user_role_display' => ucfirst($ud['role'])
         ]);
         $logger->login($ud['id'], ['email' => $ud['email'], 'role' => $ud['role'], 'login_method' => 'web']);
+        
+        // Redirect to dashboard
+        $redirect_url = '../dashboard/layout.php';
+        
         $show_success = true;
     } else {
         $_SESSION['login_attempts'] = ($_SESSION['login_attempts'] ?? 0) + 1;
@@ -220,10 +224,10 @@ list($attempts, $remaining_attempts, $lockout_time, $can_attempt) = getLockout()
                     html: `<div style="text-align:center;margin:15px 0"><h4 style="color:#163269;margin-bottom:10px;font-weight:600">Hello, <?= $wn ?>!</h4><p style="color:#718096;font-size:15px;margin:0">Logged in as <?= $ur ?></p><p style="color:#4ade80;font-size:13px;margin-top:8px;font-weight:500">Redirecting to dashboard...</p></div>`,
                     showConfirmButton: true, confirmButtonText: 'Continue to Dashboard', confirmButtonColor: '#163269',
                     timer: 3000, timerProgressBar: true,
-                    willClose: () => { location.href = '../dashboard/layout.php'; }
+                    willClose: () => { location.href = '<?= $redirect_url ?>'; }
                 }).then((result) => {
                     if (result.isConfirmed || result.dismiss === Swal.DismissReason.timer) {
-                        location.href = '../dashboard/layout.php';
+                        location.href = '<?= $redirect_url ?>';
                     }
                 });
             }, 300);

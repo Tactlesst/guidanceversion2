@@ -10,15 +10,16 @@ if (!$in_layout) {
     require_once '../classes/User.php';
     checkLogin();
     checkRole(['student']);
+    
+    $database = new Database();
+    $db = $database->getConnection();
 } else {
     require_once __DIR__ . '/../classes/CounselingAppointment.php';
     require_once __DIR__ . '/../classes/SystemSettings.php';
     require_once __DIR__ . '/../classes/Notification.php';
     require_once __DIR__ . '/../classes/User.php';
+    // $db is already available from layout.php
 }
-
-$database = new Database();
-$db = $database->getConnection();
 
 // Check system settings
 $settings = new SystemSettings($db);

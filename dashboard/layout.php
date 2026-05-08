@@ -36,20 +36,30 @@ $pages = [
     'student_records' => 'Student Records',
     'manage_counseling' => 'Counseling',
     'manage_exams' => 'Entrance Exams',
+    'manage_announcements' => 'Announcements',
     'schedules' => 'Schedules',
+    'daily_limits' => 'Daily Booking Limits',
+    'counseling_reports' => 'Counseling Reports',
+    'olsat_reports' => 'OLSAT Reports',
     'user_management' => 'User Management',
+    'academic_settings' => 'Academic Settings',
     'system_settings' => 'System Settings',
+    'backup_restore' => 'Backup & Restore',
     'system_logs' => 'System Logs',
-    'book_exam' => 'Entrance Exam',
+    'book_exam' => 'Book Entrance Exam',
+    'view_exam_results' => 'View Exam Results',
+    'view_application' => 'My Application Status',
+    'multiple_intelligence_survey' => 'Multiple Intelligence Survey',
+    'survey_thankyou' => 'Survey Results',
 ];
 
 $page = $_GET['page'] ?? 'dashboard';
 if (!array_key_exists($page, $pages)) $page = 'dashboard';
 
 // Role-based access check
-$student_pages = ['dashboard','profile','fill_pds','view_pds','book_appointment','view_appointments','complete_profile'];
-$examinee_pages = ['dashboard','profile','fill_pds','view_pds','book_exam','complete_profile'];
-$admin_pages = ['dashboard','profile','student_records','manage_counseling','manage_exams','schedules','user_management','system_settings','system_logs'];
+$student_pages = ['dashboard','profile','fill_pds','view_pds','book_appointment','view_appointments','complete_profile','multiple_intelligence_survey','survey_thankyou'];
+$examinee_pages = ['dashboard','profile','fill_pds','view_pds','book_exam','view_exam_results','view_application','complete_profile'];
+$admin_pages = ['dashboard','profile','student_records','manage_counseling','manage_exams','manage_announcements','schedules','daily_limits','counseling_reports','olsat_reports','user_management','academic_settings','system_settings','backup_restore','system_logs'];
 
 if (in_array($role, ['student']) && !in_array($page, $student_pages)) $page = 'dashboard';
 if ($role === 'examinee' && !in_array($page, $examinee_pages)) $page = 'dashboard';
@@ -59,21 +69,31 @@ $page_title = $pages[$page];
 
 // Map page to file path
 $file_map = [
-    'dashboard' => __DIR__ . '/index.php',
-    'profile' => __DIR__ . '/profile.php',
+    'dashboard' => __DIR__ . '/pages/index.php',
+    'profile' => __DIR__ . '/pages/profile.php',
     'fill_pds' => __DIR__ . '/../pds/fill_pds.php',
     'view_pds' => __DIR__ . '/../pds/view_pds.php',
     'book_appointment' => __DIR__ . '/../counseling/book_appointment.php',
     'view_appointments' => __DIR__ . '/../counseling/view_appointments.php',
     'complete_profile' => __DIR__ . '/../profile/complete_profile.php',
-    'student_records' => __DIR__ . '/student_records.php',
-    'manage_counseling' => __DIR__ . '/manage_counseling.php',
-    'manage_exams' => __DIR__ . '/manage_exams.php',
-    'schedules' => __DIR__ . '/schedules.php',
-    'user_management' => __DIR__ . '/user_management.php',
-    'system_settings' => __DIR__ . '/system_settings.php',
-    'system_logs' => __DIR__ . '/system_logs.php',
-    'book_exam' => __DIR__ . '/../entrance_exam/book_exam.php',
+    'student_records' => __DIR__ . '/pages/admin/student_records.php',
+    'manage_counseling' => __DIR__ . '/pages/admin/manage_counseling.php',
+    'manage_exams' => __DIR__ . '/pages/admin/manage_exams.php',
+    'manage_announcements' => __DIR__ . '/pages/admin/manage_announcements.php',
+    'schedules' => __DIR__ . '/pages/admin/schedules.php',
+    'daily_limits' => __DIR__ . '/pages/admin/daily_limits.php',
+    'counseling_reports' => __DIR__ . '/pages/reports/counseling_reports.php',
+    'olsat_reports' => __DIR__ . '/pages/reports/olsat_reports.php',
+    'user_management' => __DIR__ . '/pages/admin/user_management.php',
+    'academic_settings' => __DIR__ . '/pages/admin/academic_settings.php',
+    'system_settings' => __DIR__ . '/pages/admin/system_settings.php',
+    'backup_restore' => __DIR__ . '/pages/admin/backup_restore.php',
+    'system_logs' => __DIR__ . '/pages/admin/system_logs.php',
+    'book_exam' => __DIR__ . '/pages/examinee/book_exam.php',
+    'view_exam_results' => __DIR__ . '/pages/examinee/view_exam_results.php',
+    'view_application' => __DIR__ . '/pages/examinee/view_application.php',
+    'multiple_intelligence_survey' => __DIR__ . '/../surveys/multiple_intelligence_survey.php',
+    'survey_thankyou' => __DIR__ . '/../surveys/survey_thankyou.php',
 ];
 $content_file = $file_map[$page] ?? __DIR__ . '/index.php';
 
