@@ -66,26 +66,156 @@ if (in_array($role, ['student','examinee'])) {
 }
 ?>
 
-<h1 class="text-xl font-bold text-primary mb-5"><i class="fas fa-home mr-2"></i>Dashboard</h1>
-
 <?php if (in_array($role, ['super_admin','admin','guidance_advocate'])): ?>
-<!-- Admin Dashboard -->
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-    <div class="bg-white rounded-xl p-4 shadow-sm"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center"><i class="fas fa-users"></i></div><div><p class="text-xs text-gray-400">Total Users</p><p class="text-lg font-bold text-gray-800"><?= $stats['total_users'] ?></p></div></div></div>
-    <div class="bg-white rounded-xl p-4 shadow-sm"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-lg bg-green-100 text-green-600 flex items-center justify-center"><i class="fas fa-user-check"></i></div><div><p class="text-xs text-gray-400">Active</p><p class="text-lg font-bold text-gray-800"><?= $stats['active_users'] ?></p></div></div></div>
-    <div class="bg-white rounded-xl p-4 shadow-sm"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center"><i class="fas fa-graduation-cap"></i></div><div><p class="text-xs text-gray-400">Students</p><p class="text-lg font-bold text-gray-800"><?= $stats['total_students'] ?></p></div></div></div>
-    <div class="bg-white rounded-xl p-4 shadow-sm"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center"><i class="fas fa-clipboard-list"></i></div><div><p class="text-xs text-gray-400">Pending Counseling</p><p class="text-lg font-bold text-gray-800"><?= $stats['pending_counseling'] ?></p></div></div></div>
-</div>
-<div class="grid md:grid-cols-2 gap-4">
-    <div class="bg-white rounded-xl p-5 shadow-sm"><h3 class="font-bold text-primary text-sm mb-3"><i class="fas fa-chart-bar mr-1"></i>Students by Grade</h3>
-        <?php if(!empty($grade_stats)): foreach($grade_stats as $g): ?>
-        <div class="flex items-center justify-between py-1.5 text-sm"><span class="text-gray-600"><?= htmlspecialchars($g['grade_level']) ?></span><span class="font-semibold"><?= $g['cnt'] ?></span></div>
-        <?php endforeach; else: ?><p class="text-gray-400 text-sm">No data</p><?php endif; ?>
+<?php
+    $welcome_name = htmlspecialchars($user_info['first_name'] ?? 'User');
+    $upcoming_exams = (int)($stats['upcoming_exams'] ?? 0);
+    $pending_counseling = (int)($stats['pending_counseling'] ?? 0);
+    $submitted_pds = (int)($stats['submitted_pds'] ?? 0);
+    $today_counseling = (int)($stats['today_counseling'] ?? 0);
+    $total_pds = 0;
+    try { $total_pds = (int)$db->query("SELECT COUNT(*) FROM pds")->fetchColumn(); } catch (Exception $e) { $total_pds = 0; }
+?>
+
+<div class="space-y-6">
+    <div>
+        <h1 class="text-2xl font-bold text-primary">Dashboard Overview</h1>
+        <p class="text-sm text-gray-500">Welcome back, <span class="font-semibold text-gray-700"><?= $welcome_name ?></span>! Here's what's happening today.</p>
     </div>
-    <div class="bg-white rounded-xl p-5 shadow-sm"><h3 class="font-bold text-primary text-sm mb-3"><i class="fas fa-clock mr-1"></i>Recent Activity</h3>
-        <?php if(!empty($recent)): foreach($recent as $r): ?>
-        <div class="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0"><div class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs text-gray-500"><?= strtoupper(substr($r['first_name'],0,1)) ?></div><div><p class="text-sm"><?= htmlspecialchars($r['first_name'].' '.$r['last_name']) ?> <span class="text-xs text-gray-400"><?= $r['type']==='registration'?'registered':'booked counseling' ?></span></p><p class="text-[10px] text-gray-400"><?= timeAgo($r['created_at']) ?></p></div></div>
-        <?php endforeach; else: ?><p class="text-gray-400 text-sm">No recent activity</p><?php endif; ?>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center justify-between">
+            <div>
+                <div class="text-xs text-gray-500">Upcoming Entrance Exams</div>
+                <div class="text-2xl font-bold text-gray-800"><?= $upcoming_exams ?></div>
+                <div class="text-[11px] text-gray-400 mt-1">No change from yesterday</div>
+            </div>
+            <div class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <i class="fas fa-clipboard-list"></i>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center justify-between">
+            <div>
+                <div class="text-xs text-gray-500">Pending Counseling</div>
+                <div class="text-2xl font-bold text-gray-800"><?= $pending_counseling ?></div>
+                <div class="text-[11px] text-gray-400 mt-1">No change this week</div>
+            </div>
+            <div class="w-11 h-11 rounded-2xl bg-cyan-50 text-cyan-600 flex items-center justify-center">
+                <i class="fas fa-comments"></i>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center justify-between">
+            <div>
+                <div class="text-xs text-gray-500">Submitted PDS</div>
+                <div class="text-2xl font-bold text-gray-800"><?= $submitted_pds ?></div>
+                <div class="text-[11px] text-gray-400 mt-1">Pending completion</div>
+            </div>
+            <div class="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <i class="fas fa-file-alt"></i>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center justify-between">
+            <div>
+                <div class="text-xs text-gray-500">Total PDS Records</div>
+                <div class="text-2xl font-bold text-gray-800"><?= $total_pds ?></div>
+                <div class="text-[11px] text-gray-400 mt-1">All student records</div>
+            </div>
+            <div class="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                <i class="fas fa-folder-open"></i>
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <h2 class="text-sm font-semibold text-gray-700 mb-3">Quick Actions</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <a href="layout.php?page=manage_exams" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition">
+                <div class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3"><i class="fas fa-clipboard-list"></i></div>
+                <div class="font-semibold text-gray-800">Manage Entrance Exams Appointments</div>
+                <div class="text-xs text-gray-500 mt-1">Review and confirm entrance exam appointments</div>
+            </a>
+            <a href="layout.php?page=manage_counseling" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition">
+                <div class="w-11 h-11 rounded-2xl bg-cyan-50 text-cyan-600 flex items-center justify-center mb-3"><i class="fas fa-user-friends"></i></div>
+                <div class="font-semibold text-gray-800">Assigned Counseling</div>
+                <div class="text-xs text-gray-500 mt-1">View your assigned counseling appointments</div>
+            </a>
+            <a href="layout.php?page=schedules" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition">
+                <div class="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3"><i class="fas fa-calendar-alt"></i></div>
+                <div class="font-semibold text-gray-800">Schedule Management</div>
+                <div class="text-xs text-gray-500 mt-1">Manage events and calendar</div>
+            </a>
+            <a href="layout.php?page=system_settings" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition">
+                <div class="w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mb-3"><i class="fas fa-cogs"></i></div>
+                <div class="font-semibold text-gray-800">System Settings</div>
+                <div class="text-xs text-gray-500 mt-1">Configure system features</div>
+            </a>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden lg:col-span-2">
+            <div class="px-5 py-4 border-b border-gray-100 flex items-center gap-2 text-gray-700">
+                <i class="fas fa-history text-primary"></i>
+                <div class="font-semibold">Recent Activities</div>
+            </div>
+            <div class="p-5">
+                <?php if(!empty($recent)): foreach($recent as $r): ?>
+                    <div class="flex items-start gap-3 py-3 border-b border-gray-50 last:border-0">
+                        <div class="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-xs font-semibold text-gray-600">
+                            <?= strtoupper(substr($r['first_name'],0,1)) ?>
+                        </div>
+                        <div class="min-w-0">
+                            <div class="text-sm text-gray-800">
+                                <span class="font-semibold"><?= htmlspecialchars($r['first_name'].' '.$r['last_name']) ?></span>
+                                <span class="text-gray-400 text-xs ml-1"><?= $r['type']==='registration'?'registered':'booked counseling' ?></span>
+                            </div>
+                            <div class="text-[11px] text-gray-400"><?= timeAgo($r['created_at']) ?></div>
+                        </div>
+                    </div>
+                <?php endforeach; else: ?>
+                    <div class="text-center py-10">
+                        <div class="w-14 h-14 rounded-2xl bg-gray-50 mx-auto flex items-center justify-center text-gray-300 mb-3">
+                            <i class="fas fa-inbox text-2xl"></i>
+                        </div>
+                        <div class="text-sm text-gray-500">No recent activities</div>
+                        <div class="text-xs text-gray-400 mt-1">Activities from the last 7 days will appear here</div>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-100 flex items-center gap-2 text-gray-700">
+                <i class="fas fa-list-check text-primary"></i>
+                <div class="font-semibold">Tasks Overview</div>
+            </div>
+            <div class="p-5 space-y-3">
+                <div class="flex items-center justify-between gap-3 p-3 rounded-xl bg-gray-50">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-700 flex items-center justify-center"><i class="fas fa-comments"></i></div>
+                        <div>
+                            <div class="text-sm font-semibold text-gray-800">Today's Counseling</div>
+                            <div class="text-xs text-gray-500">Scheduled sessions for today</div>
+                        </div>
+                    </div>
+                    <div class="text-xs font-bold text-gray-700 bg-white border rounded-full px-2 py-0.5"><?= $today_counseling ?></div>
+                </div>
+
+                <div class="flex items-center justify-between gap-3 p-3 rounded-xl bg-gray-50">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center"><i class="fas fa-calendar-day"></i></div>
+                        <div>
+                            <div class="text-sm font-semibold text-gray-800">Upcoming Sessions</div>
+                            <div class="text-xs text-gray-500">Next 3 days</div>
+                        </div>
+                    </div>
+                    <div class="text-xs font-bold text-gray-700 bg-white border rounded-full px-2 py-0.5"><?= $pending_counseling ?></div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -105,11 +235,11 @@ if (in_array($role, ['student','examinee'])) {
         </div>
         <p class="text-sm text-gray-500">Apply for entrance examination to SRCB.</p>
         <div class="mt-4 flex flex-wrap gap-2">
-            <a href="layout.php?page=entrance_exam/book_exam" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-dark transition-colors shadow-sm">
+            <a href="layout.php?page=book_exam" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-dark transition-colors shadow-sm">
                 <i class="fas fa-calendar-plus"></i>
                 <span>Book Exam</span>
             </a>
-            <a href="layout.php?page=entrance_exam/book_exam" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-primary text-primary text-sm font-semibold hover:bg-primary hover:text-white transition-colors">
+            <a href="layout.php?page=view_application" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-primary text-primary text-sm font-semibold hover:bg-primary hover:text-white transition-colors">
                 <i class="fas fa-eye"></i>
                 <span>My Application Status</span>
             </a>

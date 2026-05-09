@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__ . '/../classes/User.php';
-require_once __DIR__ . '/../classes/PersonalDataSheet.php';
+require_once __DIR__ . '/../../../classes/User.php';
+require_once __DIR__ . '/../../../classes/PersonalDataSheet.php';
 
 $user_obj = new User($db);
 $pds = new PersonalDataSheet($db);
@@ -9,9 +9,9 @@ $pds = new PersonalDataSheet($db);
 if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
     ob_end_clean();
     header('Content-Type: application/json');
-    $page = max(1, intval($_GET['p'] ?? 1));
+    $pg = max(1, intval($_GET['p'] ?? 1));
     $per = 10;
-    $off = ($page - 1) * $per;
+    $off = ($pg - 1) * $per;
     $q = trim($_GET['q'] ?? '');
     $role = $_GET['role'] ?? 'all';
 
@@ -52,7 +52,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
     }
     unset($row);
 
-    echo json_encode(['rows'=>$rows, 'total'=>$total, 'per_page'=>$per, 'page'=>$page]);
+    echo json_encode(['rows'=>$rows, 'total'=>$total, 'per_page'=>$per, 'page'=>$pg]);
     exit();
 }
 

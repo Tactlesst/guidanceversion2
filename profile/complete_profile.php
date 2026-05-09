@@ -8,9 +8,11 @@ if (!$in_layout) {
 $user_info = getUserInfo();
 if (!in_array($user_info['role'], ['student', 'examinee'])) { header("Location: " . ($in_layout ? "layout.php" : "../dashboard/index.php")); exit(); }
 
-try {
-    $db = (new Database())->getConnection();
-} catch (Exception $e) { die("Database connection failed."); }
+if (!$in_layout) {
+    try {
+        $db = (new Database())->getConnection();
+    } catch (Exception $e) { die("Database connection failed."); }
+}
 
 // Get current profile
 $profile = null;

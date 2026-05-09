@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__ . '/../classes/User.php';
-require_once __DIR__ . '/../classes/StudentImport.php';
+require_once __DIR__ . '/../../../classes/User.php';
+require_once __DIR__ . '/../../../classes/StudentImport.php';
 
 $user_obj = new User($db);
 $import_obj = new StudentImport($db);
@@ -105,7 +105,7 @@ if (isset($_GET['action'])) {
             case 'toggle_status': $user_obj->toggleUserStatus($_GET['id']); echo json_encode(['success'=>true]); break;
             case 'get_user': echo json_encode($user_obj->getUserById($_GET['id'])); break;
             case 'fetch_active':
-                $page = max(1, intval($_GET['p'] ?? 1)); $per = 10; $off = ($page-1)*$per;
+                $pg = max(1, intval($_GET['p'] ?? 1)); $per = 10; $off = ($pg-1)*$per;
                 $q = trim($_GET['q'] ?? ''); $role = $_GET['role'] ?? '';
                 $w = ["(u.archived=0 OR u.archived IS NULL)"]; $p_arr = [];
                 if ($q) { $w[] = "(u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR sp.student_id LIKE ?)"; $like = "%$q%"; $p_arr = [$like,$like,$like,$like]; }
@@ -113,13 +113,13 @@ if (isset($_GET['action'])) {
                 $where = implode(' AND ', $w);
                 $c_stmt = $db->prepare("SELECT COUNT(*) as total FROM users u LEFT JOIN student_profiles sp ON u.id=sp.user_id WHERE $where"); $c_stmt->execute($p_arr); $total = $c_stmt->fetch(PDO::FETCH_ASSOC)['total'];
                 $stmt = $db->prepare("SELECT u.*, sp.student_id FROM users u LEFT JOIN student_profiles sp ON u.id=sp.user_id WHERE $where ORDER BY u.created_at DESC LIMIT $per OFFSET $off"); $stmt->execute($p_arr);
-                echo json_encode(['rows'=>$stmt->fetchAll(PDO::FETCH_ASSOC), 'total'=>$total, 'per_page'=>$per, 'page'=>$page]);
+                echo json_encode(['rows'=>$stmt->fetchAll(PDO::FETCH_ASSOC), 'total'=>$total, 'per_page'=>$per, 'page'=>$pg]);
                 break;
             case 'fetch_archived':
-                $page = max(1, intval($_GET['p'] ?? 1)); $per = 10; $off = ($page-1)*$per;
+                $pg = max(1, intval($_GET['p'] ?? 1)); $per = 10; $off = ($pg-1)*$per;
                 $c_stmt = $db->prepare("SELECT COUNT(*) as total FROM users u LEFT JOIN student_profiles sp ON u.id=sp.user_id WHERE u.archived=1"); $c_stmt->execute(); $total = $c_stmt->fetch(PDO::FETCH_ASSOC)['total'];
                 $stmt = $db->prepare("SELECT u.*, sp.student_id FROM users u LEFT JOIN student_profiles sp ON u.id=sp.user_id WHERE u.archived=1 ORDER BY u.created_at DESC LIMIT $per OFFSET $off"); $stmt->execute();
-                echo json_encode(['rows'=>$stmt->fetchAll(PDO::FETCH_ASSOC), 'total'=>$total, 'per_page'=>$per, 'page'=>$page]);
+                echo json_encode(['rows'=>$stmt->fetchAll(PDO::FETCH_ASSOC), 'total'=>$total, 'per_page'=>$per, 'page'=>$pg]);
                 break;
             default: echo json_encode(['error'=>'Invalid']);
         }

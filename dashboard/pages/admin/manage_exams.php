@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__ . '/../classes/EntranceExam.php';
-require_once __DIR__ . '/../classes/Notification.php';
+require_once __DIR__ . '/../../../classes/EntranceExam.php';
+require_once __DIR__ . '/../../../classes/Notification.php';
 
 $exam = new EntranceExam($db);
 $notif = new Notification($db);

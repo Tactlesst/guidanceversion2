@@ -4,7 +4,7 @@
 
 if (!defined('IN_LAYOUT')) die('Direct access not allowed');
 
-require_once __DIR__ . '/../../classes/EntranceExamResults.php';
+require_once __DIR__ . '/../../../classes/EntranceExamResults.php';
 $exam_results = new EntranceExamResults($db);
 
 // Get student's exam results

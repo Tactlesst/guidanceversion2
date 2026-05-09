@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../classes/SystemLogger.php';
+require_once __DIR__ . '/../../../classes/SystemLogger.php';
 
 $logger = new SystemLogger($db);
 
@@ -26,9 +26,9 @@ $error_message = $msgs['error'];
 $filter_type = $_GET['type'] ?? 'all';
 $filter_date = $_GET['date'] ?? '';
 $search = $_GET['search'] ?? '';
-$page = max(1, (int)($_GET['page'] ?? 1));
+$pg = max(1, (int)($_GET['page'] ?? 1));
 $per_page = 50;
-$offset = ($page - 1) * $per_page;
+$offset = ($pg - 1) * $per_page;
 
 $where = []; $params = [];
 if ($filter_type !== 'all') { $where[] = "sl.log_type = ?"; $params[] = $filter_type; }
@@ -113,7 +113,7 @@ $log_colors = ['login'=>'blue','logout'=>'gray','warning'=>'yellow','error'=>'re
         <?php if ($total_pages > 1): ?>
         <div class="p-4 border-t flex justify-center gap-2">
             <?php for ($i = 1; $i <= min($total_pages, 10); $i++): ?>
-            <a href="layout.php?page=system_logs&type=<?= $filter_type ?>&date=<?= $filter_date ?>&search=<?= urlencode($search) ?>&p=<?= $i ?>" class="px-3 py-1 rounded text-sm <?= $i==$page?'bg-primary text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200' ?>"><?= $i ?></a>
+            <a href="layout.php?page=system_logs&type=<?= $filter_type ?>&date=<?= $filter_date ?>&search=<?= urlencode($search) ?>&page=<?= $i ?>" class="px-3 py-1 rounded text-sm <?= $i==$pg?'bg-primary text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200' ?>"><?= $i ?></a>
             <?php endfor; ?>
         </div>
         <?php endif; ?>

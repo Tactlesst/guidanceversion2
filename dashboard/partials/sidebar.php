@@ -51,7 +51,7 @@
             <div id="reports-submenu" class="<?= in_array($page,['counseling_reports','ses_analytics','olsat_reports'])?'':'hidden' ?> pl-8 mt-1 space-y-1">
                 <a href="layout.php?page=counseling_reports" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='counseling_reports'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
                     <i class="fas fa-calendar-alt w-4 text-center"></i><span>Counseling Reports</span></a>
-                <a href="../admin/ses_analytics.php" class="flex items-center gap-3 px-3 py-2 rounded-lg text-white/70 hover:bg-white/10 hover:text-white transition-colors text-sm">
+                <a href="layout.php?page=ses_analytics" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='ses_analytics'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
                     <i class="fas fa-chart-line w-4 text-center"></i><span>SES Analytics</span></a>
                 <a href="layout.php?page=olsat_reports" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='olsat_reports'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
                     <i class="fas fa-clipboard-list w-4 text-center"></i><span>OLSAT Exam Reports</span></a>

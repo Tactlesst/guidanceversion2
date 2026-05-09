@@ -131,788 +131,357 @@ $grade_levels = $db->query("
 ")->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Academic Settings - SRCB Guidance</title>
-    <link rel="icon" type="image/x-icon" href="../assets/images/srcblogo.ico">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --primary-color: #4361ee;
-            --secondary-color: #3a0ca3;
-            --accent-color: #4cc9f0;
-            --success-color: #4ade80;
-            --warning-color: #facc15;
-            --danger-color: #f87171;
-            --light-bg: #f8fafc;
-            --dark-text: #1e293b;
-            --light-text: #64748b;
-            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            --sidebar-width: 280px;
-            --sidebar-collapsed-width: 80px;
-            --transition-speed: 0.3s;
-        }
-        
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--light-bg);
-            color: var(--dark-text);
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
-        
-        /* Main Content */
-        #content {
-            margin-left: var(--sidebar-width);
-            transition: margin-left var(--transition-speed);
-            min-height: 100vh;
-            padding-bottom: 20px;
-        }
-        
-        .sidebar-collapsed #content {
-            margin-left: var(--sidebar-collapsed-width);
-        }
-        
-        /* Dashboard Cards */
-        .dashboard-card {
-            background: white;
-            border-radius: 12px;
-            box-shadow: var(--card-shadow);
-            transition: transform 0.3s, box-shadow 0.3s;
-            height: 100%;
-            border: none;
-            overflow: hidden;
-        }
-        
-        .dashboard-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-        }
-        
-        .card {
-            background: white;
-            border-radius: 12px;
-            box-shadow: var(--card-shadow);
-            border: none;
-        }
-        
-        .nav-tabs .nav-link {
-            border: none;
-            color: var(--light-text);
-            font-weight: 500;
-            padding: 12px 24px;
-            border-radius: 8px 8px 0 0;
-            margin-right: 4px;
-        }
-        
-        .nav-tabs .nav-link.active {
-            background: var(--primary-color);
-            color: white;
-        }
-        
-        .nav-tabs .nav-link:hover {
-            background: rgba(67, 97, 238, 0.1);
-            color: var(--primary-color);
-        }
-        
-        .btn-primary {
-            background-color: var(--primary-color);
-            border-color: var(--primary-color);
-        }
-        
-        .btn-primary:hover {
-            background-color: var(--secondary-color);
-            border-color: var(--secondary-color);
-        }
-        
-        .btn-outline-primary {
-            color: var(--primary-color);
-            border-color: var(--primary-color);
-        }
-        
-        .btn-outline-primary:hover {
-            background-color: var(--primary-color);
-            color: white;
-        }
-        
-        .status-badge {
-            font-size: 0.75rem;
-            padding: 4px 8px;
-            border-radius: 12px;
-        }
-        
-        /* Section headers */
-        .section-header {
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-            border-bottom: 1px solid #e2e8f0;
-        }
-        
-        /* Icon circles */
-        .icon-circle {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 15px;
-            flex-shrink: 0;
-        }
-        
-        .icon-circle-primary {
-            background: rgba(67, 97, 238, 0.1);
-            color: var(--primary-color);
-        }
-        
-        .icon-circle-success {
-            background: rgba(76, 222, 128, 0.1);
-            color: var(--success-color);
-        }
-        
-        .icon-circle-warning {
-            background: rgba(250, 204, 21, 0.1);
-            color: var(--warning-color);
-        }
-        
-        .icon-circle-info {
-            background: rgba(76, 201, 240, 0.1);
-            color: var(--accent-color);
-        }
-        
-        /* Badge colors */
-        .bg-primary {
-            background-color: var(--primary-color) !important;
-        }
-        
-        .bg-success {
-            background-color: var(--success-color) !important;
-        }
-        
-        .bg-warning {
-            background-color: var(--warning-color) !important;
-        }
-        
-        .bg-info {
-            background-color: var(--accent-color) !important;
-        }
-        
-        .text-primary {
-            color: var(--primary-color) !important;
-        }
-        
-        /* Mobile responsive fixes */
-        @media (max-width: 991.98px) {
-            /* Content always takes full width on mobile */
-            #content {
-                margin-left: 0 !important;
-            }
-            
-            .sidebar-collapsed #content {
-                margin-left: 0 !important;
-            }
-            
-            /* Mobile overlay styling */
-            .mobile-overlay {
-                display: none;
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: rgba(0, 0, 0, 0.6);
-                z-index: 1049;
-                opacity: 0;
-                transition: opacity 0.3s ease;
-            }
-            
-            .sidebar-show .mobile-overlay {
-                display: block;
-                opacity: 1;
-            }
-        }
-        
-        /* Small mobile devices */
-        @media (max-width: 575.98px) {
-            .container-fluid {
-                padding-left: 12px;
-                padding-right: 12px;
-            }
-            
-            .px-3 {
-                padding-left: 0.75rem !important;
-                padding-right: 0.75rem !important;
-            }
-            
-            .dashboard-card {
-                margin-bottom: 1rem;
-            }
-        }
-        
-    </style>
-</head>
-<body>
-    <!-- Mobile Overlay -->
-    <div class="mobile-overlay" id="mobileOverlay"></div>
+<div class="space-y-6">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+        <h1 class="text-2xl font-bold text-gray-800">
+            <i class="fas fa-graduation-cap mr-2 text-primary"></i>Academic Settings
+        </h1>
+    </div>
 
-    <!-- Include Sidebar Component -->
-    <?php include 'sidebar.php'; ?>
+    <?php if ($success_message): ?>
+    <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-center justify-between">
+        <span><i class="fas fa-check-circle mr-2"></i><?= htmlspecialchars($success_message) ?></span>
+        <button type="button" class="text-green-700/70 hover:text-green-700" data-dismiss-alert><i class="fas fa-times"></i></button>
+    </div>
+    <?php endif; ?>
+    <?php if ($error_message): ?>
+    <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center justify-between">
+        <span><i class="fas fa-exclamation-triangle mr-2"></i><?= htmlspecialchars($error_message) ?></span>
+        <button type="button" class="text-red-700/70 hover:text-red-700" data-dismiss-alert><i class="fas fa-times"></i></button>
+    </div>
+    <?php endif; ?>
 
-    <!-- Main Content -->
-    <div class="container-fluid mt-4">
-        <!-- Page Header -->
-        <div class="row mb-4 px-3">
-            <div class="col-12">
-                <h2 class="text-primary mb-0">
-                    Academic Settings Management
-                </h2>
-                <p class="text-muted">Manage departments, programs, strands, and grade levels for the guidance system</p>
-            </div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="bg-white rounded-xl shadow-sm p-4 border-l-4 border-blue-500">
+            <div class="text-xs text-gray-500">Departments</div>
+            <div class="text-2xl font-bold text-gray-800"><?= count($departments) ?></div>
         </div>
-
-        <div class="row px-3">
-            <div class="col-12">
-                <div class="dashboard-card">
-                    <div class="card-header bg-light">
-                        <h5 class="text-primary mb-0 section-header">
-                            <i class="fas fa-graduation-cap me-2"></i>Academic Configuration
-                        </h5>
-                    </div>
-                    
-                    <?php if($success_message): ?>
-                        <div class="alert alert-success alert-dismissible fade show m-3" role="alert">
-                            <i class="fas fa-check-circle me-2"></i>
-                            <?php echo $success_message; ?>
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    <?php endif; ?>
-
-                    <?php if($error_message): ?>
-                        <div class="alert alert-danger alert-dismissible fade show m-3" role="alert">
-                            <i class="fas fa-exclamation-triangle me-2"></i>
-                            <?php echo $error_message; ?>
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    <?php endif; ?>
-                    
-                    <!-- Navigation Tabs -->
-                    <ul class="nav nav-tabs" id="academicTabs" role="tablist">
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="departments-tab" data-bs-toggle="tab" data-bs-target="#departments" type="button" role="tab">
-                                <i class="fas fa-building me-2"></i>Departments
-                                <span class="badge bg-light text-dark ms-2"><?php echo count($departments); ?></span>
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="programs-tab" data-bs-toggle="tab" data-bs-target="#programs" type="button" role="tab">
-                                <i class="fas fa-book me-2"></i>Programs
-                                <span class="badge bg-light text-dark ms-2"><?php echo count($programs); ?></span>
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="strands-tab" data-bs-toggle="tab" data-bs-target="#strands" type="button" role="tab">
-                                <i class="fas fa-route me-2"></i>Strands
-                                <span class="badge bg-light text-dark ms-2"><?php echo count($strands); ?></span>
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="grades-tab" data-bs-toggle="tab" data-bs-target="#grades" type="button" role="tab">
-                                <i class="fas fa-layer-group me-2"></i>Grade Levels
-                                <span class="badge bg-light text-dark ms-2"><?php echo count($grade_levels); ?></span>
-                            </button>
-                        </li>
-                    </ul>
-                    
-                    <!-- Tab Content -->
-                    <div class="tab-content" id="academicTabContent">
-                        <!-- Departments Tab -->
-                        <div class="tab-pane fade show active" id="departments" role="tabpanel">
-                            <div class="card-body">
-                                <div class="row">
-                                    <div class="col-md-4">
-                                        <h5>Add New Department</h5>
-                                        <form method="POST">
-                                            <input type="hidden" name="action" value="add_department">
-                                            <div class="mb-3">
-                                                <label class="form-label">Department Name</label>
-                                                <input type="text" class="form-control" name="department_name" required>
-                                            </div>
-                                            <div class="mb-3">
-                                                <label class="form-label">Description</label>
-                                                <textarea class="form-control" name="department_description" rows="3"></textarea>
-                                            </div>
-                                            <button type="submit" class="btn btn-primary">
-                                                <i class="fas fa-plus me-2"></i>Add Department
-                                            </button>
-                                        </form>
-                                    </div>
-                                    <div class="col-md-8">
-                                        <h5>Existing Departments</h5>
-                                        <div class="table-responsive">
-                                            <table class="table table-hover">
-                                                <thead class="table-light">
-                                                    <tr>
-                                                        <th>Name</th>
-                                                        <th>Description</th>
-                                                        <th>Status</th>
-                                                        <th>Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <?php foreach($departments as $dept): ?>
-                                                    <tr>
-                                                        <td><strong><?php echo htmlspecialchars($dept['name']); ?></strong></td>
-                                                        <td><?php echo htmlspecialchars($dept['description'] ?? 'No description'); ?></td>
-                                                        <td>
-                                                            <span class="status-badge <?php echo $dept['is_active'] ? 'bg-success' : 'bg-secondary'; ?>">
-                                                                <?php echo $dept['is_active'] ? 'Active' : 'Inactive'; ?>
-                                                            </span>
-                                                        </td>
-                                                        <td>
-                                                            <button type="button" class="btn btn-sm btn-primary me-1" onclick="editDepartment(<?php echo $dept['id']; ?>, '<?php echo addslashes($dept['name']); ?>', '<?php echo addslashes($dept['description'] ?? ''); ?>')">
-                                                                <i class="fas fa-edit"></i> Edit
-                                                            </button>
-                                                            <form method="POST" class="d-inline">
-                                                                <input type="hidden" name="action" value="toggle_status">
-                                                                <input type="hidden" name="table" value="academic_departments">
-                                                                <input type="hidden" name="id" value="<?php echo $dept['id']; ?>">
-                                                                <input type="hidden" name="status" value="<?php echo $dept['is_active'] ? 0 : 1; ?>">
-                                                                <button type="submit" class="btn btn-sm <?php echo $dept['is_active'] ? 'btn-warning' : 'btn-success'; ?>">
-                                                                    <i class="fas <?php echo $dept['is_active'] ? 'fa-pause' : 'fa-play'; ?>"></i>
-                                                                    <?php echo $dept['is_active'] ? 'Deactivate' : 'Activate'; ?>
-                                                                </button>
-                                                            </form>
-                                                        </td>
-                                                    </tr>
-                                                    
-                                                    <?php endforeach; ?>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Programs Tab -->
-                        <div class="tab-pane fade" id="programs" role="tabpanel">
-                            <div class="card-body">
-                                <div class="row">
-                                    <div class="col-md-4">
-                                        <h5>Add New Program</h5>
-                                        <form method="POST">
-                                            <input type="hidden" name="action" value="add_program">
-                                            <div class="mb-3">
-                                                <label class="form-label">Program Name</label>
-                                                <input type="text" class="form-control" name="program_name" required>
-                                            </div>
-                                            <div class="mb-3">
-                                                <label class="form-label">Department</label>
-                                                <select class="form-control" name="program_department_id" required>
-                                                    <option value="">Select Department</option>
-                                                    <?php foreach($departments as $dept): ?>
-                                                        <option value="<?php echo $dept['id']; ?>"><?php echo htmlspecialchars($dept['name']); ?></option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                            </div>
-                                            <div class="mb-3">
-                                                <label class="form-label">Description</label>
-                                                <textarea class="form-control" name="program_description" rows="3"></textarea>
-                                            </div>
-                                            <button type="submit" class="btn btn-primary">
-                                                <i class="fas fa-plus me-2"></i>Add Program
-                                            </button>
-                                        </form>
-                                    </div>
-                                    <div class="col-md-8">
-                                        <h5>Existing Programs</h5>
-                                        <div class="table-responsive">
-                                            <table class="table table-hover">
-                                                <thead class="table-light">
-                                                    <tr>
-                                                        <th>Name</th>
-                                                        <th>Description</th>
-                                                        <th>Status</th>
-                                                        <th>Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <?php foreach($programs as $program): ?>
-                                                    <tr>
-                                                        <td><strong><?php echo htmlspecialchars($program['name']); ?></strong></td>
-                                                        <td><?php echo htmlspecialchars($program['description'] ?? 'No description'); ?></td>
-                                                        <td>
-                                                            <span class="status-badge <?php echo $program['is_active'] ? 'bg-success' : 'bg-secondary'; ?>">
-                                                                <?php echo $program['is_active'] ? 'Active' : 'Inactive'; ?>
-                                                            </span>
-                                                        </td>
-                                                        <td>
-                                                            <button type="button" class="btn btn-sm btn-primary me-1" onclick="editProgram(<?php echo $program['id']; ?>, '<?php echo addslashes($program['name']); ?>', '<?php echo addslashes($program['description'] ?? ''); ?>', <?php echo $program['department_id']; ?>)">
-                                                                <i class="fas fa-edit"></i> Edit
-                                                            </button>
-                                                            <form method="POST" class="d-inline">
-                                                                <input type="hidden" name="action" value="toggle_status">
-                                                                <input type="hidden" name="table" value="academic_programs">
-                                                                <input type="hidden" name="id" value="<?php echo $program['id']; ?>">
-                                                                <input type="hidden" name="status" value="<?php echo $program['is_active'] ? 0 : 1; ?>">
-                                                                <button type="submit" class="btn btn-sm <?php echo $program['is_active'] ? 'btn-warning' : 'btn-success'; ?>">
-                                                                    <i class="fas <?php echo $program['is_active'] ? 'fa-pause' : 'fa-play'; ?>"></i>
-                                                                    <?php echo $program['is_active'] ? 'Deactivate' : 'Activate'; ?>
-                                                                </button>
-                                                            </form>
-                                                        </td>
-                                                    </tr>
-                                                    
-                                                    <?php endforeach; ?>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Strands Tab -->
-                        <div class="tab-pane fade" id="strands" role="tabpanel">
-                            <div class="card-body">
-                                <div class="row">
-                                    <div class="col-md-4">
-                                        <h5>Add New Strand</h5>
-                                        <form method="POST">
-                                            <input type="hidden" name="action" value="add_strand">
-                                            <div class="mb-3">
-                                                <label class="form-label">Strand Name</label>
-                                                <input type="text" class="form-control" name="strand_name" required>
-                                            </div>
-                                            <div class="mb-3">
-                                                <label class="form-label">Description</label>
-                                                <textarea class="form-control" name="strand_description" rows="3"></textarea>
-                                            </div>
-                                            <button type="submit" class="btn btn-primary">
-                                                <i class="fas fa-plus me-2"></i>Add Strand
-                                            </button>
-                                        </form>
-                                    </div>
-                                    <div class="col-md-8">
-                                        <h5>Existing Strands</h5>
-                                        <div class="table-responsive">
-                                            <table class="table table-hover">
-                                                <thead class="table-light">
-                                                    <tr>
-                                                        <th>Name</th>
-                                                        <th>Description</th>
-                                                        <th>Status</th>
-                                                        <th>Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <?php foreach($strands as $strand): ?>
-                                                    <tr>
-                                                        <td><strong><?php echo htmlspecialchars($strand['name']); ?></strong></td>
-                                                        <td><?php echo htmlspecialchars($strand['description'] ?? 'No description'); ?></td>
-                                                        <td>
-                                                            <span class="status-badge <?php echo $strand['is_active'] ? 'bg-success' : 'bg-secondary'; ?>">
-                                                                <?php echo $strand['is_active'] ? 'Active' : 'Inactive'; ?>
-                                                            </span>
-                                                        </td>
-                                                        <td>
-                                                            <button type="button" class="btn btn-sm btn-primary me-1" onclick="editStrand(<?php echo $strand['id']; ?>, '<?php echo addslashes($strand['name']); ?>', '<?php echo addslashes($strand['description'] ?? ''); ?>')">
-                                                                <i class="fas fa-edit"></i> Edit
-                                                            </button>
-                                                            <form method="POST" class="d-inline">
-                                                                <input type="hidden" name="action" value="toggle_status">
-                                                                <input type="hidden" name="table" value="academic_strands">
-                                                                <input type="hidden" name="id" value="<?php echo $strand['id']; ?>">
-                                                                <input type="hidden" name="status" value="<?php echo $strand['is_active'] ? 0 : 1; ?>">
-                                                                <button type="submit" class="btn btn-sm <?php echo $strand['is_active'] ? 'btn-warning' : 'btn-success'; ?>">
-                                                                    <i class="fas <?php echo $strand['is_active'] ? 'fa-pause' : 'fa-play'; ?>"></i>
-                                                                    <?php echo $strand['is_active'] ? 'Deactivate' : 'Activate'; ?>
-                                                                </button>
-                                                            </form>
-                                                        </td>
-                                                    </tr>
-                                                    
-                                                    <?php endforeach; ?>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Grade Levels Tab -->
-                        <div class="tab-pane fade" id="grades" role="tabpanel">
-                            <div class="card-body">
-                                <div class="row">
-                                    <div class="col-md-4">
-                                        <h5>Add New Grade Level</h5>
-                                        <form method="POST">
-                                            <input type="hidden" name="action" value="add_grade_level">
-                                            <div class="mb-3">
-                                                <label class="form-label">Department</label>
-                                                <select class="form-control" name="grade_department_id" required>
-                                                    <option value="">Select Department</option>
-                                                    <?php foreach($departments as $dept): ?>
-                                                        <option value="<?php echo $dept['id']; ?>"><?php echo htmlspecialchars($dept['name']); ?></option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                            </div>
-                                            <div class="mb-3">
-                                                <label class="form-label">Grade Level Name</label>
-                                                <input type="text" class="form-control" name="grade_name" required>
-                                            </div>
-                                            <button type="submit" class="btn btn-primary">
-                                                <i class="fas fa-plus me-2"></i>Add Grade Level
-                                            </button>
-                                        </form>
-                                    </div>
-                                    <div class="col-md-8">
-                                        <h5>Existing Grade Levels</h5>
-                                        <div class="table-responsive">
-                                            <table class="table table-hover">
-                                                <thead class="table-light">
-                                                    <tr>
-                                                        <th>Grade Level</th>
-                                                        <th>Department</th>
-                                                        <th>Status</th>
-                                                        <th>Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <?php foreach($grade_levels as $grade): ?>
-                                                    <tr>
-                                                        <td><strong><?php echo htmlspecialchars($grade['name']); ?></strong></td>
-                                                        <td><?php echo htmlspecialchars($grade['department_name']); ?></td>
-                                                        <td>
-                                                            <span class="status-badge <?php echo $grade['is_active'] ? 'bg-success' : 'bg-secondary'; ?>">
-                                                                <?php echo $grade['is_active'] ? 'Active' : 'Inactive'; ?>
-                                                            </span>
-                                                        </td>
-                                                        <td>
-                                                            <button type="button" class="btn btn-sm btn-primary me-1" onclick="editGrade(<?php echo $grade['id']; ?>, '<?php echo addslashes($grade['name']); ?>', <?php echo $grade['department_id']; ?>)">
-                                                                <i class="fas fa-edit"></i> Edit
-                                                            </button>
-                                                            <form method="POST" class="d-inline">
-                                                                <input type="hidden" name="action" value="toggle_status">
-                                                                <input type="hidden" name="table" value="academic_grade_levels">
-                                                                <input type="hidden" name="id" value="<?php echo $grade['id']; ?>">
-                                                                <input type="hidden" name="status" value="<?php echo $grade['is_active'] ? 0 : 1; ?>">
-                                                                <button type="submit" class="btn btn-sm <?php echo $grade['is_active'] ? 'btn-warning' : 'btn-success'; ?>">
-                                                                    <i class="fas <?php echo $grade['is_active'] ? 'fa-pause' : 'fa-play'; ?>"></i>
-                                                                    <?php echo $grade['is_active'] ? 'Deactivate' : 'Activate'; ?>
-                                                                </button>
-                                                            </form>
-                                                        </td>
-                                                    </tr>
-                                                    
-                                                    <?php endforeach; ?>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="bg-white rounded-xl shadow-sm p-4 border-l-4 border-indigo-500">
+            <div class="text-xs text-gray-500">Programs</div>
+            <div class="text-2xl font-bold text-gray-800"><?= count($programs) ?></div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-4 border-l-4 border-cyan-500">
+            <div class="text-xs text-gray-500">Strands</div>
+            <div class="text-2xl font-bold text-gray-800"><?= count($strands) ?></div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-4 border-l-4 border-purple-500">
+            <div class="text-xs text-gray-500">Grade Levels</div>
+            <div class="text-2xl font-bold text-gray-800"><?= count($grade_levels) ?></div>
         </div>
     </div>
 
-    <!-- Shared Edit Modals -->
-    <!-- Edit Department Modal -->
-    <div class="modal fade" id="editDepartmentModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Edit Department</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form method="POST">
-                    <div class="modal-body">
-                        <input type="hidden" name="action" value="edit_department">
-                        <input type="hidden" name="department_id" id="edit_dept_id">
-                        <div class="mb-3">
-                            <label class="form-label">Department Name</label>
-                            <input type="text" class="form-control" name="department_name" id="edit_dept_name" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Description</label>
-                            <textarea class="form-control" name="department_description" id="edit_dept_desc" rows="3"></textarea>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save me-2"></i>Update Department
-                        </button>
-                    </div>
+    <div class="bg-white rounded-xl shadow-sm p-4">
+        <div class="flex bg-gray-100 rounded-lg p-1 flex-wrap gap-1" id="academicTabs">
+            <button type="button" class="tab-btn px-3 py-1.5 text-sm rounded-md bg-primary text-white" data-tab="departments">Departments</button>
+            <button type="button" class="tab-btn px-3 py-1.5 text-sm rounded-md text-gray-600 hover:bg-gray-200" data-tab="programs">Programs</button>
+            <button type="button" class="tab-btn px-3 py-1.5 text-sm rounded-md text-gray-600 hover:bg-gray-200" data-tab="strands">Strands</button>
+            <button type="button" class="tab-btn px-3 py-1.5 text-sm rounded-md text-gray-600 hover:bg-gray-200" data-tab="grades">Grade Levels</button>
+        </div>
+    </div>
+
+    <div id="departments" class="tab-panel bg-white rounded-xl shadow-sm p-6">
+        <div class="grid md:grid-cols-3 gap-6">
+            <div class="md:col-span-1">
+                <h3 class="text-lg font-semibold text-gray-800 mb-3">Add Department</h3>
+                <form method="POST" class="space-y-3">
+                    <input type="hidden" name="action" value="add_department">
+                    <div><label class="block text-sm text-gray-700 mb-1">Department Name</label><input type="text" name="department_name" required class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+                    <div><label class="block text-sm text-gray-700 mb-1">Description</label><textarea name="department_description" rows="3" class="w-full px-3 py-2 border rounded-lg text-sm"></textarea></div>
+                    <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark"><i class="fas fa-plus mr-1"></i>Add Department</button>
                 </form>
             </div>
-        </div>
-    </div>
-
-    <!-- Edit Program Modal -->
-    <div class="modal fade" id="editProgramModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Edit Program</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form method="POST">
-                    <div class="modal-body">
-                        <input type="hidden" name="action" value="edit_program">
-                        <input type="hidden" name="program_id" id="edit_prog_id">
-                        <div class="mb-3">
-                            <label class="form-label">Program Name</label>
-                            <input type="text" class="form-control" name="program_name" id="edit_prog_name" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Department</label>
-                            <select class="form-control" name="program_department_id" id="edit_prog_dept" required>
-                                <option value="">Select Department</option>
-                                <?php foreach($departments as $dept): ?>
-                                    <option value="<?php echo $dept['id']; ?>"><?php echo htmlspecialchars($dept['name']); ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Description</label>
-                            <textarea class="form-control" name="program_description" id="edit_prog_desc" rows="3"></textarea>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save me-2"></i>Update Program
-                        </button>
-                    </div>
-                </form>
+            <div class="md:col-span-2 overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 text-left text-gray-600">
+                        <tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Description</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                    <?php foreach($departments as $dept): ?>
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-3 font-medium"><?= htmlspecialchars($dept['name']) ?></td>
+                            <td class="px-4 py-3 text-gray-600"><?= htmlspecialchars($dept['description'] ?? 'No description') ?></td>
+                            <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs <?= $dept['is_active'] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600' ?>"><?= $dept['is_active'] ? 'Active' : 'Inactive' ?></span></td>
+                            <td class="px-4 py-3">
+                                <div class="flex justify-end gap-2">
+                                    <button type="button" class="px-3 py-1.5 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200" onclick="editDepartment(<?= $dept['id'] ?>, '<?= addslashes($dept['name']) ?>', '<?= addslashes($dept['description'] ?? '') ?>')"><i class="fas fa-edit mr-1"></i>Edit</button>
+                                    <form method="POST">
+                                        <input type="hidden" name="action" value="toggle_status">
+                                        <input type="hidden" name="table" value="academic_departments">
+                                        <input type="hidden" name="id" value="<?= $dept['id'] ?>">
+                                        <input type="hidden" name="status" value="<?= $dept['is_active'] ? 0 : 1 ?>">
+                                        <button type="submit" class="px-3 py-1.5 text-xs rounded <?= $dept['is_active'] ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200' ?>"><i class="fas <?= $dept['is_active'] ? 'fa-pause' : 'fa-play' ?> mr-1"></i><?= $dept['is_active'] ? 'Deactivate' : 'Activate' ?></button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
 
-    <!-- Edit Strand Modal -->
-    <div class="modal fade" id="editStrandModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Edit Strand</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form method="POST">
-                    <div class="modal-body">
-                        <input type="hidden" name="action" value="edit_strand">
-                        <input type="hidden" name="strand_id" id="edit_strand_id">
-                        <div class="mb-3">
-                            <label class="form-label">Strand Name</label>
-                            <input type="text" class="form-control" name="strand_name" id="edit_strand_name" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Description</label>
-                            <textarea class="form-control" name="strand_description" id="edit_strand_desc" rows="3"></textarea>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save me-2"></i>Update Strand
-                        </button>
-                    </div>
+    <div id="programs" class="tab-panel hidden bg-white rounded-xl shadow-sm p-6">
+        <div class="grid md:grid-cols-3 gap-6">
+            <div class="md:col-span-1">
+                <h3 class="text-lg font-semibold text-gray-800 mb-3">Add Program</h3>
+                <form method="POST" class="space-y-3">
+                    <input type="hidden" name="action" value="add_program">
+                    <div><label class="block text-sm text-gray-700 mb-1">Program Name</label><input type="text" name="program_name" required class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+                    <div><label class="block text-sm text-gray-700 mb-1">Department</label><select name="program_department_id" required class="w-full px-3 py-2 border rounded-lg text-sm"><option value="">Select Department</option><?php foreach($departments as $dept): ?><option value="<?= $dept['id'] ?>"><?= htmlspecialchars($dept['name']) ?></option><?php endforeach; ?></select></div>
+                    <div><label class="block text-sm text-gray-700 mb-1">Description</label><textarea name="program_description" rows="3" class="w-full px-3 py-2 border rounded-lg text-sm"></textarea></div>
+                    <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark"><i class="fas fa-plus mr-1"></i>Add Program</button>
                 </form>
+            </div>
+            <div class="md:col-span-2 overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 text-left text-gray-600"><tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Description</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
+                    <tbody class="divide-y divide-gray-100">
+                    <?php foreach($programs as $program): ?>
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-3 font-medium"><?= htmlspecialchars($program['name']) ?></td>
+                            <td class="px-4 py-3 text-gray-600"><?= htmlspecialchars($program['description'] ?? 'No description') ?></td>
+                            <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs <?= $program['is_active'] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600' ?>"><?= $program['is_active'] ? 'Active' : 'Inactive' ?></span></td>
+                            <td class="px-4 py-3">
+                                <div class="flex justify-end gap-2">
+                                    <button type="button" class="px-3 py-1.5 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200" onclick="editProgram(<?= $program['id'] ?>, '<?= addslashes($program['name']) ?>', '<?= addslashes($program['description'] ?? '') ?>', <?= (int)$program['department_id'] ?>)"><i class="fas fa-edit mr-1"></i>Edit</button>
+                                    <form method="POST">
+                                        <input type="hidden" name="action" value="toggle_status"><input type="hidden" name="table" value="academic_programs"><input type="hidden" name="id" value="<?= $program['id'] ?>"><input type="hidden" name="status" value="<?= $program['is_active'] ? 0 : 1 ?>">
+                                        <button type="submit" class="px-3 py-1.5 text-xs rounded <?= $program['is_active'] ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200' ?>"><i class="fas <?= $program['is_active'] ? 'fa-pause' : 'fa-play' ?> mr-1"></i><?= $program['is_active'] ? 'Deactivate' : 'Activate' ?></button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
 
-    <!-- Edit Grade Level Modal -->
-    <div class="modal fade" id="editGradeModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Edit Grade Level</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form method="POST">
-                    <div class="modal-body">
-                        <input type="hidden" name="action" value="edit_grade_level">
-                        <input type="hidden" name="grade_id" id="edit_grade_id">
-                        <div class="mb-3">
-                            <label class="form-label">Department</label>
-                            <select class="form-control" name="grade_department_id" id="edit_grade_dept" required>
-                                <option value="">Select Department</option>
-                                <?php foreach($departments as $dept): ?>
-                                    <option value="<?php echo $dept['id']; ?>"><?php echo htmlspecialchars($dept['name']); ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Grade Level Name</label>
-                            <input type="text" class="form-control" name="grade_name" id="edit_grade_name" required>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save me-2"></i>Update Grade Level
-                        </button>
-                    </div>
+    <div id="strands" class="tab-panel hidden bg-white rounded-xl shadow-sm p-6">
+        <div class="grid md:grid-cols-3 gap-6">
+            <div class="md:col-span-1">
+                <h3 class="text-lg font-semibold text-gray-800 mb-3">Add Strand</h3>
+                <form method="POST" class="space-y-3">
+                    <input type="hidden" name="action" value="add_strand">
+                    <div><label class="block text-sm text-gray-700 mb-1">Strand Name</label><input type="text" name="strand_name" required class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+                    <div><label class="block text-sm text-gray-700 mb-1">Description</label><textarea name="strand_description" rows="3" class="w-full px-3 py-2 border rounded-lg text-sm"></textarea></div>
+                    <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark"><i class="fas fa-plus mr-1"></i>Add Strand</button>
                 </form>
+            </div>
+            <div class="md:col-span-2 overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 text-left text-gray-600"><tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Description</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
+                    <tbody class="divide-y divide-gray-100">
+                    <?php foreach($strands as $strand): ?>
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-3 font-medium"><?= htmlspecialchars($strand['name']) ?></td>
+                            <td class="px-4 py-3 text-gray-600"><?= htmlspecialchars($strand['description'] ?? 'No description') ?></td>
+                            <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs <?= $strand['is_active'] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600' ?>"><?= $strand['is_active'] ? 'Active' : 'Inactive' ?></span></td>
+                            <td class="px-4 py-3">
+                                <div class="flex justify-end gap-2">
+                                    <button type="button" class="px-3 py-1.5 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200" onclick="editStrand(<?= $strand['id'] ?>, '<?= addslashes($strand['name']) ?>', '<?= addslashes($strand['description'] ?? '') ?>')"><i class="fas fa-edit mr-1"></i>Edit</button>
+                                    <form method="POST">
+                                        <input type="hidden" name="action" value="toggle_status"><input type="hidden" name="table" value="academic_strands"><input type="hidden" name="id" value="<?= $strand['id'] ?>"><input type="hidden" name="status" value="<?= $strand['is_active'] ? 0 : 1 ?>">
+                                        <button type="submit" class="px-3 py-1.5 text-xs rounded <?= $strand['is_active'] ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200' ?>"><i class="fas <?= $strand['is_active'] ? 'fa-pause' : 'fa-play' ?> mr-1"></i><?= $strand['is_active'] ? 'Deactivate' : 'Activate' ?></button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
 
-    <!-- Add jQuery -->
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <!-- Modal Management JavaScript -->
-    <script>
-        // Edit Department Function
-        function editDepartment(id, name, description) {
-            $('#edit_dept_id').val(id);
-            $('#edit_dept_name').val(name);
-            $('#edit_dept_desc').val(description);
-            $('#editDepartmentModal').modal('show');
-        }
+    <div id="grades" class="tab-panel hidden bg-white rounded-xl shadow-sm p-6">
+        <div class="grid md:grid-cols-3 gap-6">
+            <div class="md:col-span-1">
+                <h3 class="text-lg font-semibold text-gray-800 mb-3">Add Grade Level</h3>
+                <form method="POST" class="space-y-3">
+                    <input type="hidden" name="action" value="add_grade_level">
+                    <div><label class="block text-sm text-gray-700 mb-1">Department</label><select name="grade_department_id" required class="w-full px-3 py-2 border rounded-lg text-sm"><option value="">Select Department</option><?php foreach($departments as $dept): ?><option value="<?= $dept['id'] ?>"><?= htmlspecialchars($dept['name']) ?></option><?php endforeach; ?></select></div>
+                    <div><label class="block text-sm text-gray-700 mb-1">Grade Level Name</label><input type="text" name="grade_name" required class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+                    <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark"><i class="fas fa-plus mr-1"></i>Add Grade Level</button>
+                </form>
+            </div>
+            <div class="md:col-span-2 overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 text-left text-gray-600"><tr><th class="px-4 py-3">Grade Level</th><th class="px-4 py-3">Department</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
+                    <tbody class="divide-y divide-gray-100">
+                    <?php foreach($grade_levels as $grade): ?>
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-3 font-medium"><?= htmlspecialchars($grade['name']) ?></td>
+                            <td class="px-4 py-3 text-gray-600"><?= htmlspecialchars($grade['department_name']) ?></td>
+                            <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs <?= $grade['is_active'] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600' ?>"><?= $grade['is_active'] ? 'Active' : 'Inactive' ?></span></td>
+                            <td class="px-4 py-3">
+                                <div class="flex justify-end gap-2">
+                                    <button type="button" class="px-3 py-1.5 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200" onclick="editGrade(<?= $grade['id'] ?>, '<?= addslashes($grade['name']) ?>', <?= (int)$grade['department_id'] ?>)"><i class="fas fa-edit mr-1"></i>Edit</button>
+                                    <form method="POST">
+                                        <input type="hidden" name="action" value="toggle_status"><input type="hidden" name="table" value="academic_grade_levels"><input type="hidden" name="id" value="<?= $grade['id'] ?>"><input type="hidden" name="status" value="<?= $grade['is_active'] ? 0 : 1 ?>">
+                                        <button type="submit" class="px-3 py-1.5 text-xs rounded <?= $grade['is_active'] ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200' ?>"><i class="fas <?= $grade['is_active'] ? 'fa-pause' : 'fa-play' ?> mr-1"></i><?= $grade['is_active'] ? 'Deactivate' : 'Activate' ?></button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
 
-        // Edit Program Function  
-        function editProgram(id, name, description, departmentId) {
-            $('#edit_prog_id').val(id);
-            $('#edit_prog_name').val(name);
-            $('#edit_prog_desc').val(description);
-            $('#edit_prog_dept').val(departmentId);
-            $('#editProgramModal').modal('show');
-        }
+<!-- Edit Department Modal -->
+<div id="editDepartmentModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+        <div class="bg-primary text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
+            <h3 class="text-lg font-bold"><i class="fas fa-edit mr-2"></i>Edit Department</h3>
+            <button type="button" onclick="closeModal('editDepartmentModal')" class="text-white/80 hover:text-white"><i class="fas fa-times"></i></button>
+        </div>
+        <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="action" value="edit_department"><input type="hidden" name="department_id" id="edit_dept_id">
+            <div><label class="block text-sm text-gray-700 mb-1">Department Name</label><input type="text" name="department_name" id="edit_dept_name" required class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+            <div><label class="block text-sm text-gray-700 mb-1">Description</label><textarea name="department_description" id="edit_dept_desc" rows="3" class="w-full px-3 py-2 border rounded-lg text-sm"></textarea></div>
+            <div class="flex justify-end gap-3"><button type="button" onclick="closeModal('editDepartmentModal')" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancel</button><button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark">Save Changes</button></div>
+        </form>
+    </div>
+</div>
 
-        // Edit Strand Function
-        function editStrand(id, name, description) {
-            $('#edit_strand_id').val(id);
-            $('#edit_strand_name').val(name);
-            $('#edit_strand_desc').val(description);
-            $('#editStrandModal').modal('show');
-        }
+<!-- Edit Program Modal -->
+<div id="editProgramModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+        <div class="bg-indigo-600 text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
+            <h3 class="text-lg font-bold"><i class="fas fa-edit mr-2"></i>Edit Program</h3>
+            <button type="button" onclick="closeModal('editProgramModal')" class="text-white/80 hover:text-white"><i class="fas fa-times"></i></button>
+        </div>
+        <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="action" value="edit_program"><input type="hidden" name="program_id" id="edit_prog_id">
+            <div><label class="block text-sm text-gray-700 mb-1">Program Name</label><input type="text" name="program_name" id="edit_prog_name" required class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+            <div><label class="block text-sm text-gray-700 mb-1">Department</label><select name="program_department_id" id="edit_prog_dept" required class="w-full px-3 py-2 border rounded-lg text-sm"><option value="">Select Department</option><?php foreach($departments as $dept): ?><option value="<?= $dept['id'] ?>"><?= htmlspecialchars($dept['name']) ?></option><?php endforeach; ?></select></div>
+            <div><label class="block text-sm text-gray-700 mb-1">Description</label><textarea name="program_description" id="edit_prog_desc" rows="3" class="w-full px-3 py-2 border rounded-lg text-sm"></textarea></div>
+            <div class="flex justify-end gap-3"><button type="button" onclick="closeModal('editProgramModal')" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancel</button><button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">Save Changes</button></div>
+        </form>
+    </div>
+</div>
 
-        // Edit Grade Level Function
-        function editGrade(id, name, departmentId) {
-            $('#edit_grade_id').val(id);
-            $('#edit_grade_name').val(name);
-            $('#edit_grade_dept').val(departmentId);
-            $('#editGradeModal').modal('show');
+<!-- Edit Strand Modal -->
+<div id="editStrandModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+        <div class="bg-cyan-600 text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
+            <h3 class="text-lg font-bold"><i class="fas fa-edit mr-2"></i>Edit Strand</h3>
+            <button type="button" onclick="closeModal('editStrandModal')" class="text-white/80 hover:text-white"><i class="fas fa-times"></i></button>
+        </div>
+        <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="action" value="edit_strand"><input type="hidden" name="strand_id" id="edit_strand_id">
+            <div><label class="block text-sm text-gray-700 mb-1">Strand Name</label><input type="text" name="strand_name" id="edit_strand_name" required class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+            <div><label class="block text-sm text-gray-700 mb-1">Description</label><textarea name="strand_description" id="edit_strand_desc" rows="3" class="w-full px-3 py-2 border rounded-lg text-sm"></textarea></div>
+            <div class="flex justify-end gap-3"><button type="button" onclick="closeModal('editStrandModal')" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancel</button><button type="submit" class="px-4 py-2 bg-cyan-600 text-white rounded-lg text-sm hover:bg-cyan-700">Save Changes</button></div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Grade Modal -->
+<div id="editGradeModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+        <div class="bg-purple-600 text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
+            <h3 class="text-lg font-bold"><i class="fas fa-edit mr-2"></i>Edit Grade Level</h3>
+            <button type="button" onclick="closeModal('editGradeModal')" class="text-white/80 hover:text-white"><i class="fas fa-times"></i></button>
+        </div>
+        <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="action" value="edit_grade_level"><input type="hidden" name="grade_id" id="edit_grade_id">
+            <div><label class="block text-sm text-gray-700 mb-1">Department</label><select name="grade_department_id" id="edit_grade_dept" required class="w-full px-3 py-2 border rounded-lg text-sm"><option value="">Select Department</option><?php foreach($departments as $dept): ?><option value="<?= $dept['id'] ?>"><?= htmlspecialchars($dept['name']) ?></option><?php endforeach; ?></select></div>
+            <div><label class="block text-sm text-gray-700 mb-1">Grade Level Name</label><input type="text" name="grade_name" id="edit_grade_name" required class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+            <div class="flex justify-end gap-3"><button type="button" onclick="closeModal('editGradeModal')" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancel</button><button type="submit" class="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700">Save Changes</button></div>
+        </form>
+    </div>
+</div>
+
+<script>
+function setValue(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = value ?? '';
+}
+
+function openModal(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModal(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    document.body.style.overflow = '';
+}
+
+function switchTab(tab) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+    document.getElementById(tab)?.classList.remove('hidden');
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        if (btn.dataset.tab === tab) {
+            btn.classList.add('bg-primary', 'text-white');
+            btn.classList.remove('text-gray-600', 'hover:bg-gray-200');
+        } else {
+            btn.classList.remove('bg-primary', 'text-white');
+            btn.classList.add('text-gray-600', 'hover:bg-gray-200');
         }
-    </script>
-</div> <!-- End Content -->
-</body>
-</html>
+    });
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+document.querySelectorAll('[data-dismiss-alert]').forEach(btn => {
+    btn.addEventListener('click', () => btn.closest('div')?.remove());
+});
+
+document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('fixed') && e.target.id && e.target.id.endsWith('Modal')) {
+        closeModal(e.target.id);
+    }
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        ['editDepartmentModal', 'editProgramModal', 'editStrandModal', 'editGradeModal'].forEach(closeModal);
+    }
+});
+
+function editDepartment(id, name, description) {
+    setValue('edit_dept_id', id);
+    setValue('edit_dept_name', name);
+    setValue('edit_dept_desc', description);
+    openModal('editDepartmentModal');
+}
+
+function editProgram(id, name, description, departmentId) {
+    setValue('edit_prog_id', id);
+    setValue('edit_prog_name', name);
+    setValue('edit_prog_desc', description);
+    setValue('edit_prog_dept', departmentId);
+    openModal('editProgramModal');
+}
+
+function editStrand(id, name, description) {
+    setValue('edit_strand_id', id);
+    setValue('edit_strand_name', name);
+    setValue('edit_strand_desc', description);
+    openModal('editStrandModal');
+}
+
+function editGrade(id, name, departmentId) {
+    setValue('edit_grade_id', id);
+    setValue('edit_grade_name', name);
+    setValue('edit_grade_dept', departmentId);
+    openModal('editGradeModal');
+}
+</script>

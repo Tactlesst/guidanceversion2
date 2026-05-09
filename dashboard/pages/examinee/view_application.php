@@ -4,8 +4,8 @@
 
 if (!defined('IN_LAYOUT')) die('Direct access not allowed');
 
-require_once __DIR__ . '/../../classes/EntranceExam.php';
-require_once __DIR__ . '/../../classes/EntranceExamResults.php';
+require_once __DIR__ . '/../../../classes/EntranceExam.php';
+require_once __DIR__ . '/../../../classes/EntranceExamResults.php';
 
 $entrance_exam = new EntranceExam($db);
 $exam_results = new EntranceExamResults($db);

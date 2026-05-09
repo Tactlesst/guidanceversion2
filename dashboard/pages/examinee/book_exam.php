@@ -6,7 +6,7 @@ if (!defined('IN_LAYOUT')) die('Direct access not allowed');
 
 // Check if entrance exam is enabled
 try {
-    require_once __DIR__ . '/../../classes/SystemSettings.php';
+    require_once __DIR__ . '/../../../classes/SystemSettings.php';
     $settings = new SystemSettings($db);
     if(!$settings->isEntranceExamEnabled()) {
         echo '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle mr-2"></i>Entrance exam booking is currently disabled.</div>';
@@ -59,7 +59,7 @@ if($_POST && isset($_POST['book_appointment'])) {
     if($has_active_exam) {
         $error_message = "You already have an active entrance exam appointment. You cannot book a new appointment until your current appointment is completed or marked as missed.";
     } else {
-        require_once __DIR__ . '/../../classes/EntranceExam.php';
+        require_once __DIR__ . '/../../../classes/EntranceExam.php';
         $entrance_exam = new EntranceExam($db);
         
         $entrance_exam->user_id = $uid;
@@ -97,8 +97,8 @@ if($_POST && isset($_POST['book_appointment'])) {
             $appointment_id = $entrance_exam->create();
             if($appointment_id) {
                 // Create notifications for staff
-                require_once __DIR__ . '/../../classes/Notification.php';
-                require_once __DIR__ . '/../../classes/NotificationService.php';
+                require_once __DIR__ . '/../../../classes/Notification.php';
+                require_once __DIR__ . '/../../../classes/NotificationService.php';
                 $notification = new Notification($db);
                 $notificationService = new NotificationService($db);
                 

@@ -1,10 +1,13 @@
 <?php
-require_once '../config/database.php';
-require_once '../includes/session.php';
-checkLogin();
-$user_info = getUserInfo();
-if (!in_array($user_info['role'], ['student', 'examinee'])) { header("Location: ../dashboard/index.php"); exit(); }
-try { $db = (new Database())->getConnection(); } catch (Exception $e) { die("Database connection failed."); }
+$in_layout = defined('IN_LAYOUT');
+if (!$in_layout) {
+    require_once '../config/database.php';
+    require_once '../includes/session.php';
+    checkLogin();
+    $user_info = getUserInfo();
+    if (!in_array($user_info['role'], ['student', 'examinee'])) { header("Location: ../dashboard/index.php"); exit(); }
+    try { $db = (new Database())->getConnection(); } catch (Exception $e) { die("Database connection failed."); }
+}
 
 $student_profile = null;
 try { $sp = $db->prepare("SELECT * FROM student_profiles WHERE user_id = ?"); $sp->execute([$user_info['id']]); $student_profile = $sp->fetch(PDO::FETCH_ASSOC); } catch (Exception $e) {}
@@ -106,44 +109,9 @@ foreach ($required_fields as $rf) {
 if (($pds_data['privacy_agreement'] ?? 0) != 1) $pds_is_complete = false;
 
 // Detect if loaded inside layout.php or standalone
-$in_layout = defined('IN_LAYOUT');
 $base_url = $in_layout ? 'layout.php' : '../dashboard/layout.php';
 $dashboard_url = $in_layout ? 'layout.php?page=dashboard' : '../dashboard/index.php';
 $self_fill_url = $in_layout ? 'layout.php?page=fill_pds' : 'fill_pds.php';
-
-if (!$in_layout && !isset($db)) {
-    // Standalone mode — include session/db if not already loaded
-    require_once '../config/database.php';
-    require_once '../includes/session.php';
-    checkLogin();
-    $user_info = getUserInfo();
-    if (!in_array($user_info['role'], ['student', 'examinee'])) { header("Location: ../dashboard/index.php"); exit(); }
-    try { $db = (new Database())->getConnection(); } catch (Exception $e) { die("Database connection failed."); }
-    $student_profile = null;
-    try { $sp = $db->prepare("SELECT * FROM student_profiles WHERE user_id = ?"); $sp->execute([$user_info['id']]); $student_profile = $sp->fetch(PDO::FETCH_ASSOC); } catch (Exception $e) {}
-    if (!$student_profile || empty($student_profile['department']) || empty($student_profile['grade_level'])) { header("Location: ../profile/complete_profile.php?redirect=pds"); exit(); }
-    $user_data = null;
-    try { $ud = $db->prepare("SELECT * FROM users WHERE id = ?"); $ud->execute([$user_info['id']]); $user_data = $ud->fetch(PDO::FETCH_ASSOC); } catch (Exception $e) {}
-    $dept = $student_profile['department'] ?? '';
-    $education_level = 'highschool';
-    if (strpos($dept, 'Higher') !== false || strpos($dept, 'College') !== false) $education_level = 'highered';
-    elseif (strpos($dept, 'Senior') !== false) $education_level = 'seniorhigh';
-    elseif (strpos($dept, 'Elementary') !== false) $education_level = 'elementary';
-    $pds_data = null;
-    try { $pds_stmt = $db->prepare("SELECT * FROM pds WHERE user_id = ? LIMIT 1"); $pds_stmt->execute([$user_info['id']]); $pds_data = $pds_stmt->fetch(PDO::FETCH_ASSOC); } catch (Exception $e) {}
-    $siblings = []; $organizations = [];
-    try { $sib = $db->prepare("SELECT * FROM pds_siblings WHERE user_id = ? ORDER BY id"); $sib->execute([$user_info['id']]); $siblings = $sib->fetchAll(PDO::FETCH_ASSOC); } catch (Exception $e) {}
-    try { $org = $db->prepare("SELECT * FROM pds_organizations WHERE user_id = ? ORDER BY id"); $org->execute([$user_info['id']]); $organizations = $org->fetchAll(PDO::FETCH_ASSOC); } catch (Exception $e) {}
-    function pdsVal($f, $fb = '') {
-        global $pds_data, $user_info, $student_profile, $user_data;
-        if (isset($pds_data[$f]) && $pds_data[$f] !== '' && $pds_data[$f] !== null) return $pds_data[$f];
-        $auto = ['first_name'=>$user_info['first_name']??'','middle_name'=>$user_data['middle_name']??'','last_name'=>$user_info['last_name']??'','email'=>$user_info['email']??'','contact_number'=>$student_profile['contact_number']??'','nationality'=>'Filipino','grade_level'=>$student_profile['grade_level']??'','strand'=>$student_profile['strand']??'','course'=>$student_profile['program']??'','home_address'=>$student_profile['home_address']??''];
-        return $auto[$f] ?? $fb;
-    }
-    $success_message = ''; $error_message = '';
-    // POST handling is below — but in standalone mode, we need to handle it here
-    // Since the POST logic is at the top of this file, it's already handled
-}
 
 if (!$in_layout) {
     // Output full HTML wrapper for standalone mode

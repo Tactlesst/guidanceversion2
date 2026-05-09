@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../classes/SystemSettings.php';
+require_once __DIR__ . '/../../../classes/SystemSettings.php';
 
 $settings = new SystemSettings($db);
 

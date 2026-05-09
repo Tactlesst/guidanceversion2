@@ -1,8 +1,8 @@
 <?php
-require_once __DIR__ . '/../classes/CounselingAppointment.php';
-require_once __DIR__ . '/../classes/CounselingRemarks.php';
-require_once __DIR__ . '/../classes/User.php';
-require_once __DIR__ . '/../classes/Notification.php';
+require_once __DIR__ . '/../../../classes/CounselingAppointment.php';
+require_once __DIR__ . '/../../../classes/CounselingRemarks.php';
+require_once __DIR__ . '/../../../classes/User.php';
+require_once __DIR__ . '/../../../classes/Notification.php';
 
 date_default_timezone_set('Asia/Manila');
 

@@ -1,7 +1,7 @@
 <?php
-require_once __DIR__ . '/../classes/Schedule.php';
-require_once __DIR__ . '/../classes/Holiday.php';
-require_once __DIR__ . '/../classes/DailyBookingLimit.php';
+require_once __DIR__ . '/../../../classes/Schedule.php';
+require_once __DIR__ . '/../../../classes/Holiday.php';
+require_once __DIR__ . '/../../../classes/DailyBookingLimit.php';
 
 $schedule = new Schedule($db);
 $holiday = new Holiday($db);
