@@ -11,20 +11,8 @@
         <a href="layout.php?page=dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='dashboard'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
             <i class="fas fa-home w-5 text-center"></i><span>Dashboard</span></a>
 
-        <?php if ($role === 'super_admin'): ?>
-        <!-- Super Admin Menu -->
-        <a href="layout.php?page=user_management" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='user_management'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-users-cog w-5 text-center"></i><span>User Management</span></a>
-        <a href="layout.php?page=academic_settings" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='academic_settings'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-graduation-cap w-5 text-center"></i><span>Academic Settings</span></a>
-        <a href="layout.php?page=backup_restore" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='backup_restore'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-database w-5 text-center"></i><span>Backup & Restore</span></a>
-        <a href="layout.php?page=system_logs" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='system_logs'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-file-alt w-5 text-center"></i><span>System Logs</span></a>
-        <?php endif; ?>
-
         <?php if (in_array($role, ['admin','guidance_advocate'])): ?>
-        <!-- Admin/Guidance Advocate Menu -->
+        <!-- Admin / Guidance Advocate Menu -->
         <a href="layout.php?page=student_records" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='student_records'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
             <i class="fas fa-users w-5 text-center"></i><span>Student Management</span></a>
         <a href="layout.php?page=manage_counseling" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='manage_counseling'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
@@ -37,10 +25,6 @@
             <i class="fas fa-calendar-alt w-5 text-center"></i><span>Schedule</span></a>
         <a href="layout.php?page=daily_limits" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='daily_limits'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
             <i class="fas fa-calendar-check w-5 text-center"></i><span>Daily Booking Limits</span></a>
-        <?php if ($role === 'admin'): ?>
-        <a href="layout.php?page=system_settings" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='system_settings'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-cogs w-5 text-center"></i><span>System Settings</span></a>
-        <?php endif; ?>
         <div>
             <button onclick="toggleSubmenu('reports')" class="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg <?= in_array($page,['counseling_reports','ses_analytics','olsat_reports'])?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
                 <div class="flex items-center gap-3">
@@ -57,6 +41,22 @@
                     <i class="fas fa-clipboard-list w-4 text-center"></i><span>OLSAT Exam Reports</span></a>
             </div>
         </div>
+        <?php if ($role === 'admin'): ?>
+        <a href="layout.php?page=system_settings" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='system_settings'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
+            <i class="fas fa-cogs w-5 text-center"></i><span>System Settings</span></a>
+        <?php endif; ?>
+        <?php endif; ?>
+
+        <?php if ($role === 'super_admin'): ?>
+        <!-- Super Admin Menu -->
+        <a href="layout.php?page=user_management" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='user_management'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
+            <i class="fas fa-users-cog w-5 text-center"></i><span>User Management</span></a>
+        <a href="layout.php?page=academic_settings" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='academic_settings'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
+            <i class="fas fa-graduation-cap w-5 text-center"></i><span>Academic Settings</span></a>
+        <a href="layout.php?page=backup_restore" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='backup_restore'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
+            <i class="fas fa-database w-5 text-center"></i><span>Backup & Restore</span></a>
+        <a href="layout.php?page=system_logs" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='system_logs'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
+            <i class="fas fa-file-alt w-5 text-center"></i><span>System Logs</span></a>
         <?php endif; ?>
 
         <?php if ($role === 'student'): ?>

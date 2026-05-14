@@ -63,6 +63,7 @@ function getUserInfo() {
     return [
         'id' => $_SESSION['user_id'] ?? null, 'role' => $_SESSION['role'] ?? null,
         'first_name' => $_SESSION['first_name'] ?? null, 'last_name' => $_SESSION['last_name'] ?? null,
+        'email' => $_SESSION['user_email'] ?? null,
         'position' => $_SESSION['position'] ?? null, 'student_id' => $_SESSION['student_id'] ?? null,
         'grade_level_applying' => $_SESSION['grade_level_applying'] ?? null
     ];

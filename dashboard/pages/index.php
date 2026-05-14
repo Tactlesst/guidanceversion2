@@ -24,7 +24,7 @@ function timeAgo($datetime) {
     return floor($diff / 86400) . 'd ago';
 }
 
-$stats = ['total_users'=>0,'active_users'=>0,'total_students'=>0,'total_examinees'=>0,'upcoming_exams'=>0,'pending_counseling'=>0,'submitted_pds'=>0,'today_counseling'=>0,'awaiting_results'=>0];
+$stats = ['total_users'=>0,'active_users'=>0,'total_students'=>0,'total_examinees'=>0,'upcoming_exams'=>0,'pending_counseling'=>0,'submitted_pds'=>0,'total_pds'=>0,'today_counseling'=>0,'awaiting_results'=>0,'total_exams'=>0,'active_counseling'=>0,'exams_today'=>0,'counseling_this_week'=>0,'pds_this_week'=>0,'new_users_today'=>0];
 
 if (in_array($role, ['super_admin','admin','guidance_advocate'])) {
     try {
@@ -32,15 +32,37 @@ if (in_array($role, ['super_admin','admin','guidance_advocate'])) {
         $stats['active_users'] = $db->query("SELECT COUNT(*) FROM users WHERE is_active=1 AND (archived=0 OR archived IS NULL)")->fetchColumn();
         $stats['total_students'] = $db->query("SELECT COUNT(*) FROM users WHERE role IN ('student','examinee') AND (archived=0 OR archived IS NULL)")->fetchColumn();
         $stats['total_examinees'] = $db->query("SELECT COUNT(*) FROM users WHERE role='examinee' AND (archived=0 OR archived IS NULL)")->fetchColumn();
-        $stats['upcoming_exams'] = $db->query("SELECT COUNT(*) FROM entrance_exam_appointments WHERE status='confirmed' AND preferred_date>=CURDATE()")->fetchColumn();
-        $stats['pending_counseling'] = $db->query("SELECT COUNT(*) FROM counseling_appointments WHERE status='pending'")->fetchColumn();
-        $stats['today_counseling'] = $db->query("SELECT COUNT(*) FROM counseling_appointments WHERE DATE(appointment_date)=CURDATE() AND status='confirmed'")->fetchColumn();
-        $stats['awaiting_results'] = $db->query("SELECT COUNT(*) FROM entrance_exam_appointments WHERE status='confirmed'")->fetchColumn();
+
+        // Upcoming entrance exams (confirmed or pending with future date)
+        $stats['upcoming_exams'] = $db->query("SELECT COUNT(*) FROM entrance_exam_appointments WHERE status IN ('confirmed','pending') AND preferred_date >= CURDATE()")->fetchColumn();
+        // Total exam appointments
+        $stats['total_exams'] = $db->query("SELECT COUNT(*) FROM entrance_exam_appointments")->fetchColumn();
+        // Exams today
+        $stats['exams_today'] = $db->query("SELECT COUNT(*) FROM entrance_exam_appointments WHERE preferred_date = CURDATE() AND status IN ('confirmed','pending')")->fetchColumn();
+
+        // Active counseling (pending + confirmed + in_progress)
+        $stats['pending_counseling'] = $db->query("SELECT COUNT(*) FROM counseling_appointments WHERE status IN ('pending','confirmed','in_progress')")->fetchColumn();
+        // Completed counseling this week
+        $stats['counseling_this_week'] = $db->query("SELECT COUNT(*) FROM counseling_appointments WHERE status = 'completed' AND YEARWEEK(appointment_date) = YEARWEEK(CURDATE())")->fetchColumn();
+        // Today's counseling
+        $stats['today_counseling'] = $db->query("SELECT COUNT(*) FROM counseling_appointments WHERE DATE(appointment_date)=CURDATE() AND status IN ('confirmed','in_progress')")->fetchColumn();
+
+        // PDS stats
+        $stats['submitted_pds'] = $db->query("SELECT COUNT(*) FROM pds")->fetchColumn();
+        $stats['total_pds'] = $stats['submitted_pds'];
+        $stats['pds_this_week'] = $db->query("SELECT COUNT(*) FROM pds WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)")->fetchColumn();
+
+        // Awaiting exam results
+        $stats['awaiting_results'] = $db->query("SELECT COUNT(*) FROM entrance_exam_appointments WHERE status = 'awaiting_results'")->fetchColumn();
+
+        // New users today
+        $stats['new_users_today'] = $db->query("SELECT COUNT(*) FROM users WHERE DATE(created_at) = CURDATE() AND role IN ('student','examinee')")->fetchColumn();
+
         $grade_stats = $db->query("SELECT sp.grade_level, COUNT(*) as cnt FROM student_profiles sp JOIN users u ON sp.user_id=u.id WHERE u.role='student' AND (u.archived=0 OR u.archived IS NULL) GROUP BY sp.grade_level ORDER BY sp.grade_level")->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) { $grade_stats = []; }
     $recent = [];
     try {
-        $act_stmt = $db->query("(SELECT u.first_name, u.last_name, u.created_at, 'registration' as type, u.role as extra FROM users u WHERE u.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) AND u.role IN ('student','examinee') ORDER BY u.created_at DESC LIMIT 3) UNION ALL (SELECT u.first_name, u.last_name, ca.created_at, 'counseling' as type, ca.status as extra FROM counseling_appointments ca JOIN users u ON ca.user_id=u.id WHERE ca.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) ORDER BY ca.created_at DESC LIMIT 3) ORDER BY created_at DESC LIMIT 5");
+        $act_stmt = $db->query("(SELECT u.first_name, u.last_name, u.created_at, 'registration' as type, u.role as extra FROM users u WHERE u.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND u.role IN ('student','examinee') ORDER BY u.created_at DESC LIMIT 5) UNION ALL (SELECT u.first_name, u.last_name, ca.created_at, 'counseling' as type, ca.status as extra FROM counseling_appointments ca JOIN users u ON ca.user_id=u.id WHERE ca.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) ORDER BY ca.created_at DESC LIMIT 5) UNION ALL (SELECT u.first_name, u.last_name, ea.created_at, 'exam' as type, ea.status as extra FROM entrance_exam_appointments ea JOIN users u ON ea.user_id=u.id WHERE ea.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) ORDER BY ea.created_at DESC LIMIT 5) ORDER BY created_at DESC LIMIT 8");
         $recent = $act_stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) { $recent = []; }
 }
@@ -70,11 +92,22 @@ if (in_array($role, ['student','examinee'])) {
 <?php
     $welcome_name = htmlspecialchars($user_info['first_name'] ?? 'User');
     $upcoming_exams = (int)($stats['upcoming_exams'] ?? 0);
+    $total_exams = (int)($stats['total_exams'] ?? 0);
+    $exams_today = (int)($stats['exams_today'] ?? 0);
     $pending_counseling = (int)($stats['pending_counseling'] ?? 0);
+    $counseling_this_week = (int)($stats['counseling_this_week'] ?? 0);
     $submitted_pds = (int)($stats['submitted_pds'] ?? 0);
+    $pds_this_week = (int)($stats['pds_this_week'] ?? 0);
     $today_counseling = (int)($stats['today_counseling'] ?? 0);
-    $total_pds = 0;
-    try { $total_pds = (int)$db->query("SELECT COUNT(*) FROM pds")->fetchColumn(); } catch (Exception $e) { $total_pds = 0; }
+    $total_pds = (int)($stats['total_pds'] ?? 0);
+    $total_students = (int)($stats['total_students'] ?? 0);
+    $new_users_today = (int)($stats['new_users_today'] ?? 0);
+
+    // Dynamic subtitle logic
+    $exam_subtitle = $upcoming_exams > 0 ? "$upcoming_exams upcoming" . ($exams_today > 0 ? " · $exams_today today" : '') : ($total_exams > 0 ? "$total_exams total exam records" : 'No upcoming exams');
+    $counseling_subtitle = $pending_counseling > 0 ? "$pending_counseling active session" . ($pending_counseling > 1 ? 's' : '') : ($counseling_this_week > 0 ? "$counseling_this_week completed this week" : 'No active sessions');
+    $pds_subtitle = $submitted_pds > 0 ? ($pds_this_week > 0 ? "+$pds_this_week this week" : "$submitted_pds total submitted") : 'No submissions yet';
+    $total_pds_subtitle = $total_students > 0 ? "$total_students enrolled students" : 'No student records';
 ?>
 
 <div class="space-y-6">
@@ -88,7 +121,7 @@ if (in_array($role, ['student','examinee'])) {
             <div>
                 <div class="text-xs text-gray-500">Upcoming Entrance Exams</div>
                 <div class="text-2xl font-bold text-gray-800"><?= $upcoming_exams ?></div>
-                <div class="text-[11px] text-gray-400 mt-1">No change from yesterday</div>
+                <div class="text-[11px] <?= $upcoming_exams > 0 ? 'text-indigo-600 font-medium' : 'text-gray-400' ?> mt-1"><?= $exam_subtitle ?></div>
             </div>
             <div class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
                 <i class="fas fa-clipboard-list"></i>
@@ -99,7 +132,7 @@ if (in_array($role, ['student','examinee'])) {
             <div>
                 <div class="text-xs text-gray-500">Pending Counseling</div>
                 <div class="text-2xl font-bold text-gray-800"><?= $pending_counseling ?></div>
-                <div class="text-[11px] text-gray-400 mt-1">No change this week</div>
+                <div class="text-[11px] <?= $pending_counseling > 0 ? 'text-cyan-600 font-medium' : 'text-gray-400' ?> mt-1"><?= $counseling_subtitle ?></div>
             </div>
             <div class="w-11 h-11 rounded-2xl bg-cyan-50 text-cyan-600 flex items-center justify-center">
                 <i class="fas fa-comments"></i>
@@ -110,7 +143,7 @@ if (in_array($role, ['student','examinee'])) {
             <div>
                 <div class="text-xs text-gray-500">Submitted PDS</div>
                 <div class="text-2xl font-bold text-gray-800"><?= $submitted_pds ?></div>
-                <div class="text-[11px] text-gray-400 mt-1">Pending completion</div>
+                <div class="text-[11px] <?= $submitted_pds > 0 ? 'text-emerald-600 font-medium' : 'text-gray-400' ?> mt-1"><?= $pds_subtitle ?></div>
             </div>
             <div class="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
                 <i class="fas fa-file-alt"></i>
@@ -121,7 +154,7 @@ if (in_array($role, ['student','examinee'])) {
             <div>
                 <div class="text-xs text-gray-500">Total PDS Records</div>
                 <div class="text-2xl font-bold text-gray-800"><?= $total_pds ?></div>
-                <div class="text-[11px] text-gray-400 mt-1">All student records</div>
+                <div class="text-[11px] <?= $total_pds > 0 ? 'text-amber-600 font-medium' : 'text-gray-400' ?> mt-1"><?= $total_pds_subtitle ?></div>
             </div>
             <div class="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
                 <i class="fas fa-folder-open"></i>
@@ -170,7 +203,13 @@ if (in_array($role, ['student','examinee'])) {
                         <div class="min-w-0">
                             <div class="text-sm text-gray-800">
                                 <span class="font-semibold"><?= htmlspecialchars($r['first_name'].' '.$r['last_name']) ?></span>
-                                <span class="text-gray-400 text-xs ml-1"><?= $r['type']==='registration'?'registered':'booked counseling' ?></span>
+                                <?php if($r['type']==='registration'): ?>
+                                    <span class="text-gray-400 text-xs ml-1">registered as <?= $r['extra'] ?></span>
+                                <?php elseif($r['type']==='counseling'): ?>
+                                    <span class="text-gray-400 text-xs ml-1">booked counseling (<?= $r['extra'] ?>)</span>
+                                <?php elseif($r['type']==='exam'): ?>
+                                    <span class="text-gray-400 text-xs ml-1">booked exam (<?= $r['extra'] ?>)</span>
+                                <?php endif; ?>
                             </div>
                             <div class="text-[11px] text-gray-400"><?= timeAgo($r['created_at']) ?></div>
                         </div>
@@ -181,7 +220,7 @@ if (in_array($role, ['student','examinee'])) {
                             <i class="fas fa-inbox text-2xl"></i>
                         </div>
                         <div class="text-sm text-gray-500">No recent activities</div>
-                        <div class="text-xs text-gray-400 mt-1">Activities from the last 7 days will appear here</div>
+                        <div class="text-xs text-gray-400 mt-1">Activities from the last 30 days will appear here</div>
                     </div>
                 <?php endif; ?>
             </div>
@@ -201,18 +240,40 @@ if (in_array($role, ['student','examinee'])) {
                             <div class="text-xs text-gray-500">Scheduled sessions for today</div>
                         </div>
                     </div>
-                    <div class="text-xs font-bold text-gray-700 bg-white border rounded-full px-2 py-0.5"><?= $today_counseling ?></div>
+                    <div class="text-xs font-bold <?= $today_counseling > 0 ? 'text-cyan-700' : 'text-gray-700' ?> bg-white border rounded-full px-2 py-0.5"><?= $today_counseling ?></div>
                 </div>
 
                 <div class="flex items-center justify-between gap-3 p-3 rounded-xl bg-gray-50">
                     <div class="flex items-center gap-3">
                         <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center"><i class="fas fa-calendar-day"></i></div>
                         <div>
-                            <div class="text-sm font-semibold text-gray-800">Upcoming Sessions</div>
-                            <div class="text-xs text-gray-500">Next 3 days</div>
+                            <div class="text-sm font-semibold text-gray-800">Active Counseling</div>
+                            <div class="text-xs text-gray-500">Pending & confirmed sessions</div>
                         </div>
                     </div>
-                    <div class="text-xs font-bold text-gray-700 bg-white border rounded-full px-2 py-0.5"><?= $pending_counseling ?></div>
+                    <div class="text-xs font-bold <?= $pending_counseling > 0 ? 'text-emerald-700' : 'text-gray-700' ?> bg-white border rounded-full px-2 py-0.5"><?= $pending_counseling ?></div>
+                </div>
+
+                <div class="flex items-center justify-between gap-3 p-3 rounded-xl bg-gray-50">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center"><i class="fas fa-clipboard-list"></i></div>
+                        <div>
+                            <div class="text-sm font-semibold text-gray-800">Upcoming Exams</div>
+                            <div class="text-xs text-gray-500">Confirmed & pending</div>
+                        </div>
+                    </div>
+                    <div class="text-xs font-bold <?= $upcoming_exams > 0 ? 'text-indigo-700' : 'text-gray-700' ?> bg-white border rounded-full px-2 py-0.5"><?= $upcoming_exams ?></div>
+                </div>
+
+                <div class="flex items-center justify-between gap-3 p-3 rounded-xl bg-gray-50">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center"><i class="fas fa-user-plus"></i></div>
+                        <div>
+                            <div class="text-sm font-semibold text-gray-800">New Users Today</div>
+                            <div class="text-xs text-gray-500">Students & examinees</div>
+                        </div>
+                    </div>
+                    <div class="text-xs font-bold <?= $new_users_today > 0 ? 'text-amber-700' : 'text-gray-700' ?> bg-white border rounded-full px-2 py-0.5"><?= $new_users_today ?></div>
                 </div>
             </div>
         </div>
