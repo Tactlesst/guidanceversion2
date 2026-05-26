@@ -52,6 +52,7 @@ if ($_POST) {
                         else $db->prepare("INSERT INTO student_profiles (user_id, student_id) VALUES (?,?)")->execute([$new_uid, $sid]);
                     }
                     $_SESSION['success_message'] = $_SESSION['success_message'] ?? "User created!";
+                    logAdminAction('create_user', "Created new user: {$_POST['first_name']} {$_POST['last_name']} with role: {$_POST['role']}", null, $db);
                 } else { $error_message = "Failed to create user."; }
             }
         } catch (Exception $e) { $error_message = $e->getMessage(); }
@@ -63,14 +64,23 @@ if ($_POST) {
             $user_obj->last_name = $_POST['last_name']; $user_obj->email = $_POST['email'];
             $user_obj->role = $_POST['role']; $user_obj->is_active = isset($_POST['is_active']) ? 1 : 0;
             $user_obj->student_id = $_POST['student_id'] ?? '';
-            if ($user_obj->updateUserComplete()) { $_SESSION['success_message'] = "User updated!"; header("Location: layout.php?page=user_management"); exit(); }
+            if ($user_obj->updateUserComplete()) { 
+                $_SESSION['success_message'] = "User updated!"; 
+                logAdminAction('edit_user', "Updated user ID {$_POST['user_id']}: {$_POST['first_name']} {$_POST['last_name']} - Role: {$_POST['role']}, Active: " . (isset($_POST['is_active']) ? 'Yes' : 'No'), null, $db);
+                header("Location: layout.php?page=user_management"); exit(); 
+            }
             else $error_message = "Failed to update user.";
         } catch (Exception $e) { $error_message = $e->getMessage(); }
     }
     if (isset($_POST['reset_password'])) {
         $pwd = $_POST['new_password'] ?? 'password123';
         if (strlen($pwd) < 8) $error_message = "Password must be at least 8 characters.";
-        else { $user_obj->resetPassword($_POST['user_id'], $pwd); $_SESSION['success_message'] = "Password reset!"; header("Location: layout.php?page=user_management"); exit(); }
+        else { 
+            $user_obj->resetPassword($_POST['user_id'], $pwd); 
+            $_SESSION['success_message'] = "Password reset!"; 
+            logAdminAction('reset_password', "Reset password for user ID: {$_POST['user_id']}", null, $db);
+            header("Location: layout.php?page=user_management"); exit(); 
+        }
     }
     if (isset($_POST['import_csv']) && isset($_FILES['csv_file'])) {
         $dir = __DIR__.'/../uploads/'; if (!file_exists($dir)) mkdir($dir, 0777, true);
@@ -96,30 +106,132 @@ if ($_POST) {
 
 // AJAX actions
 if (isset($_GET['action'])) {
+    error_reporting(0);
     ob_end_clean();
     header('Content-Type: application/json');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Cache-Control: post-check=0, pre-check=0', false);
+    header('Pragma: no-cache');
     try {
         switch ($_GET['action']) {
-            case 'archive': $user_obj->archiveUser($_GET['id']); echo json_encode(['success'=>true]); break;
-            case 'unarchive': $user_obj->unarchiveUser($_GET['id']); echo json_encode(['success'=>true]); break;
-            case 'toggle_status': $user_obj->toggleUserStatus($_GET['id']); echo json_encode(['success'=>true]); break;
+            case 'archive': 
+                try {
+                    $result = $user_obj->archiveUser($_GET['id']);
+                    if ($result) {
+                        logAdminAction('archive_user', "Archived user ID: {$_GET['id']}", null, $db);
+                    }
+                    echo json_encode(['success'=>$result]);
+                } catch (Exception $e) {
+                    echo json_encode(['success'=>false, 'error'=>$e->getMessage()]);
+                }
+                break;
+            case 'unarchive': 
+                try {
+                    $result = $user_obj->unarchiveUser($_GET['id']);
+                    if ($result) {
+                        logAdminAction('unarchive_user', "Restored user ID: {$_GET['id']}", null, $db);
+                    }
+                    echo json_encode(['success'=>$result]);
+                } catch (Exception $e) {
+                    echo json_encode(['success'=>false, 'error'=>$e->getMessage()]);
+                }
+                break;
+            case 'bulk_archive':
+                $input = json_decode(file_get_contents('php://input'), true);
+                $ids = $input['ids'] ?? [];
+                if (empty($ids)) {
+                    echo json_encode(['success'=>false, 'error'=>'No users selected']);
+                    break;
+                }
+                $success_count = 0;
+                foreach ($ids as $id) {
+                    if ($user_obj->archiveUser($id)) {
+                        $success_count++;
+                    }
+                }
+                if ($success_count > 0) {
+                    logAdminAction('bulk_archive', "Bulk archived $success_count user(s)", null, $db);
+                }
+                echo json_encode(['success'=>true, 'archived_count'=>$success_count]);
+                break;
+            case 'bulk_unarchive':
+                $input = json_decode(file_get_contents('php://input'), true);
+                $ids = $input['ids'] ?? [];
+                if (empty($ids)) {
+                    echo json_encode(['success'=>false, 'error'=>'No users selected']);
+                    break;
+                }
+                $success_count = 0;
+                foreach ($ids as $id) {
+                    if ($user_obj->unarchiveUser($id)) {
+                        $success_count++;
+                    }
+                }
+                if ($success_count > 0) {
+                    logAdminAction('bulk_unarchive', "Bulk restored $success_count user(s)", null, $db);
+                }
+                echo json_encode(['success'=>true, 'restored_count'=>$success_count]);
+                break;
+            case 'toggle_status': 
+                try {
+                    $id = (int)$_GET['id'];
+                    error_log("Toggle status called for user ID: " . $id);
+                    $result = $user_obj->toggleUserStatus($id);
+                    error_log("Toggle status result: " . ($result ? 'true' : 'false'));
+                    if ($result) {
+                        logAdminAction('toggle_status', "Toggled status for user ID: $id", null, $db);
+                    }
+                    echo json_encode(['success'=>$result]);
+                } catch (Exception $e) {
+                    error_log("Toggle status error: " . $e->getMessage());
+                    echo json_encode(['success'=>false, 'error'=>$e->getMessage()]);
+                }
+                break;
             case 'get_user': echo json_encode($user_obj->getUserById($_GET['id'])); break;
             case 'fetch_active':
-                $pg = max(1, intval($_GET['p'] ?? 1)); $per = 10; $off = ($pg-1)*$per;
-                $q = trim($_GET['q'] ?? ''); $role = $_GET['role'] ?? '';
+                $pg = max(1, intval($_GET['p'] ?? 1)); $per = max(1, min(50, intval($_GET['per'] ?? 10))); $off = ($pg-1)*$per;
+                $q = trim($_GET['q'] ?? ''); $role = $_GET['role'] ?? ''; $filter = $_GET['filter'] ?? ''; $letter = $_GET['letter'] ?? ''; $status = $_GET['status'] ?? '';
                 $w = ["(u.archived=0 OR u.archived IS NULL)"]; $p_arr = [];
-                if ($q) { $w[] = "(u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR sp.student_id LIKE ?)"; $like = "%$q%"; $p_arr = [$like,$like,$like,$like]; }
+                if ($q) { $w[] = "(u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR sp.student_id LIKE ?)"; $like = "%$q%"; array_push($p_arr, $like, $like, $like, $like); }
                 if ($role) { $w[] = "u.role = ?"; $p_arr[] = $role; }
+                if ($filter === 'missing_id') { $w[] = "u.role='student' AND (sp.student_id IS NULL OR sp.student_id='')"; }
+                if ($letter) { $w[] = "(u.last_name LIKE ? OR u.first_name LIKE ?)"; $letterLike = "$letter%"; array_push($p_arr, $letterLike, $letterLike); }
+                if ($status !== '') { $w[] = "u.is_active = ?"; $p_arr[] = (int)$status; }
                 $where = implode(' AND ', $w);
                 $c_stmt = $db->prepare("SELECT COUNT(*) as total FROM users u LEFT JOIN student_profiles sp ON u.id=sp.user_id WHERE $where"); $c_stmt->execute($p_arr); $total = $c_stmt->fetch(PDO::FETCH_ASSOC)['total'];
-                $stmt = $db->prepare("SELECT u.*, sp.student_id FROM users u LEFT JOIN student_profiles sp ON u.id=sp.user_id WHERE $where ORDER BY u.created_at DESC LIMIT $per OFFSET $off"); $stmt->execute($p_arr);
-                echo json_encode(['rows'=>$stmt->fetchAll(PDO::FETCH_ASSOC), 'total'=>$total, 'per_page'=>$per, 'page'=>$pg]);
+                $f_stmt = $db->prepare("SELECT u.id, u.first_name, u.middle_name, u.last_name, u.email, u.role, u.is_active, u.created_at, u.archived, sp.student_id FROM users u LEFT JOIN student_profiles sp ON u.id=sp.user_id WHERE $where ORDER BY u.created_at DESC LIMIT $per OFFSET $off");
+                $f_stmt->execute($p_arr);
+                $rows = $f_stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // Ensure proper serialization of is_active
+                foreach ($rows as &$row) {
+                    $row['is_active'] = (int)($row['is_active'] ?? 0);
+                }
+                unset($row);
+                
+                echo json_encode(['rows'=>$rows, 'total'=>(int)$total, 'per_page'=>(int)$per, 'page'=>(int)$pg]);
                 break;
             case 'fetch_archived':
-                $pg = max(1, intval($_GET['p'] ?? 1)); $per = 10; $off = ($pg-1)*$per;
-                $c_stmt = $db->prepare("SELECT COUNT(*) as total FROM users u LEFT JOIN student_profiles sp ON u.id=sp.user_id WHERE u.archived=1"); $c_stmt->execute(); $total = $c_stmt->fetch(PDO::FETCH_ASSOC)['total'];
-                $stmt = $db->prepare("SELECT u.*, sp.student_id FROM users u LEFT JOIN student_profiles sp ON u.id=sp.user_id WHERE u.archived=1 ORDER BY u.created_at DESC LIMIT $per OFFSET $off"); $stmt->execute();
-                echo json_encode(['rows'=>$stmt->fetchAll(PDO::FETCH_ASSOC), 'total'=>$total, 'per_page'=>$per, 'page'=>$pg]);
+                $pg = max(1, intval($_GET['p'] ?? 1)); $per = max(1, min(50, intval($_GET['per'] ?? 10))); $off = ($pg-1)*$per;
+                $q = trim($_GET['q'] ?? ''); $role = $_GET['role'] ?? ''; $letter = $_GET['letter'] ?? ''; $status = $_GET['status'] ?? '';
+                $w = ["u.archived=1"]; $p_arr = [];
+                if ($q) { $w[] = "(u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR sp.student_id LIKE ?)"; $like = "%$q%"; array_push($p_arr, $like, $like, $like, $like); }
+                if ($role) { $w[] = "u.role = ?"; $p_arr[] = $role; }
+                if ($letter) { $w[] = "(u.last_name LIKE ? OR u.first_name LIKE ?)"; $letterLike = "$letter%"; array_push($p_arr, $letterLike, $letterLike); }
+                if ($status !== '') { $w[] = "u.is_active = ?"; $p_arr[] = (int)$status; }
+                $where = implode(' AND ', $w);
+                $c_stmt = $db->prepare("SELECT COUNT(*) as total FROM users u LEFT JOIN student_profiles sp ON u.id=sp.user_id WHERE $where"); $c_stmt->execute($p_arr); $total = $c_stmt->fetch(PDO::FETCH_ASSOC)['total'];
+                $f_stmt = $db->prepare("SELECT u.id, u.first_name, u.middle_name, u.last_name, u.email, u.role, u.is_active, u.created_at, u.archived, sp.student_id FROM users u LEFT JOIN student_profiles sp ON u.id=sp.user_id WHERE $where ORDER BY u.created_at DESC LIMIT $per OFFSET $off");
+                $f_stmt->execute($p_arr);
+                $rows = $f_stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // Ensure proper serialization of is_active
+                foreach ($rows as &$row) {
+                    $row['is_active'] = (int)($row['is_active'] ?? 0);
+                }
+                unset($row);
+                
+                echo json_encode(['rows'=>$rows, 'total'=>(int)$total, 'per_page'=>(int)$per, 'page'=>(int)$pg]);
                 break;
             default: echo json_encode(['error'=>'Invalid']);
         }
@@ -132,6 +244,8 @@ $import_history = $import_obj->getImportHistory(10);
 $role_colors = ['super_admin'=>'purple','admin'=>'red','guidance_advocate'=>'green','student'=>'blue','examinee'=>'yellow'];
 $role_icons = ['super_admin'=>'fa-crown','admin'=>'fa-user-shield','guidance_advocate'=>'fa-hands-helping','student'=>'fa-user-graduate','examinee'=>'fa-file-alt'];
 ?>
+
+<script src="js/user_management.js" defer></script>
 
 <div class="space-y-6">
     <!-- Header -->
@@ -168,30 +282,50 @@ $role_icons = ['super_admin'=>'fa-crown','admin'=>'fa-user-shield','guidance_adv
     <div class="bg-white rounded-xl shadow-sm p-4">
         <div class="flex flex-wrap gap-3 items-center">
             <input type="text" id="searchInput" placeholder="Search name, email, student ID..." class="flex-1 min-w-[200px] px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none" oninput="debounceSearch()">
-            <select id="roleFilter" class="px-3 py-2 border rounded-lg text-sm" onchange="debounceSearch()">
+            <select id="roleFilter" class="px-3 py-2 border rounded-lg text-sm" onchange="onRoleFilterChange()">
                 <option value="">All Roles</option><option value="super_admin">Super Admin</option><option value="admin">Admin</option><option value="guidance_advocate">Guidance Advocate</option><option value="student">Student</option><option value="examinee">Examinee</option>
             </select>
+            <select id="statusFilter" class="px-3 py-2 border rounded-lg text-sm" onchange="onStatusFilterChange()">
+                <option value="">All Status</option><option value="1">Active</option><option value="0">Inactive</option>
+            </select>
+            <select id="letterFilter" class="px-2 py-1.5 border rounded text-xs" onchange="onLetterFilterChange()">
+                <option value="">All Letters</option>
+                <?php foreach(range('A','Z') as $letter): ?>
+                <option value="<?= $letter ?>"><?= $letter ?></option>
+                <?php endforeach; ?>
+            </select>
             <div class="flex bg-gray-100 rounded-lg p-1">
-                <button onclick="switchTab('active')" id="tab-active" class="px-3 py-1 text-sm rounded-md bg-primary text-white">Active</button>
-                <button onclick="switchTab('archived')" id="tab-archived" class="px-3 py-1 text-sm rounded-md text-gray-600">Archived</button>
-                <button onclick="switchTab('imports')" id="tab-imports" class="px-3 py-1 text-sm rounded-md text-gray-600">Imports</button>
+                <button onclick="switchUserTab('active')" id="tab-active" class="px-3 py-1 text-sm rounded-md bg-primary text-white">Active</button>
+                <button onclick="switchUserTab('archived')" id="tab-archived" class="px-3 py-1 text-sm rounded-md text-gray-600">Archived</button>
+                <button onclick="switchUserTab('imports')" id="tab-imports" class="px-3 py-1 text-sm rounded-md text-gray-600">Imports</button>
             </div>
         </div>
     </div>
 
     <!-- Active Users -->
     <div id="panel-active" class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="p-3 border-b flex items-center justify-between bg-gray-50">
+            <button type="button" onclick="bulkArchiveUsers()" id="bulkArchiveBtn" class="px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 hidden">
+                <i class="fas fa-archive mr-1"></i>Archive Selected (<span id="selectedCount">0</span>)
+            </button>
+        </div>
         <div class="overflow-x-auto">
             <table class="w-full text-sm table-fixed" id="activeUsersTable">
-                <colgroup><col class="w-[20%]"><col class="w-[20%]"><col class="w-[12%]"><col class="w-[10%]"><col class="w-[10%]"><col class="w-[12%]"><col class="w-[16%]"></colgroup>
-                <thead class="bg-gray-50 text-gray-600 text-left"><tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Email</th><th class="px-4 py-3">Role</th><th class="px-4 py-3">Student ID</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Created</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
+                <colgroup><col class="w-[5%]"><col class="w-[20%]"><col class="w-[20%]"><col class="w-[12%]"><col class="w-[10%]"><col class="w-[10%]"><col class="w-[12%]"><col class="w-[11%]"></colgroup>
+                <thead class="bg-gray-50 text-gray-600 text-left"><tr><th class="px-4 py-3"><input type="checkbox" id="selectAllUsers" onchange="toggleSelectAll()" class="rounded"></th><th class="px-4 py-3">Name</th><th class="px-4 py-3">Email</th><th class="px-4 py-3">Role</th><th class="px-4 py-3">Student ID</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Created</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
                 <tbody id="activeUsersBody" class="divide-y divide-gray-100"></tbody>
             </table>
         </div>
         <!-- Pagination -->
         <div class="px-4 py-3 border-t flex flex-col items-center gap-2">
             <span id="activePageInfo" class="text-sm text-gray-500"></span>
-            <div class="flex gap-1">
+            <div class="flex gap-1 items-center">
+                <select id="activeItemsPerPage" class="px-2 py-1.5 text-sm border rounded" onchange="onItemsPerPageChange()">
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="30">30</option>
+                    <option value="50">50</option>
+                </select>
                 <button onclick="activeChangePage(-1)" id="activePrevBtn" class="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fas fa-chevron-left mr-1"></i>Prev</button>
                 <span id="activePageNums" class="flex gap-1"></span>
                 <button onclick="activeChangePage(1)" id="activeNextBtn" class="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">Next<i class="fas fa-chevron-right ml-1"></i></button>
@@ -202,17 +336,28 @@ $role_icons = ['super_admin'=>'fa-crown','admin'=>'fa-user-shield','guidance_adv
     <!-- Archived Users -->
     <div id="panel-archived" class="bg-white rounded-xl shadow-sm overflow-hidden hidden">
         <div class="p-4 bg-blue-50 text-blue-700 text-sm"><i class="fas fa-info-circle mr-1"></i>Archived users are inactive and cannot log in.</div>
+        <div class="p-3 border-b flex items-center justify-between bg-gray-50">
+            <button type="button" onclick="bulkUnarchiveUsers()" id="bulkUnarchiveBtn" class="px-3 py-1.5 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200 hidden">
+                <i class="fas fa-undo mr-1"></i>Restore Selected (<span id="archivedSelectedCount">0</span>)
+            </button>
+        </div>
         <div class="overflow-x-auto">
             <table class="w-full text-sm table-fixed">
-                <colgroup><col class="w-[30%]"><col class="w-[30%]"><col class="w-[20%]"><col class="w-[20%]"></colgroup>
-                <thead class="bg-gray-50 text-gray-600 text-left"><tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Email</th><th class="px-4 py-3">Role</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
+                <colgroup><col class="w-[5%]"><col class="w-[30%]"><col class="w-[30%]"><col class="w-[20%]"><col class="w-[15%]"></colgroup>
+                <thead class="bg-gray-50 text-gray-600 text-left"><tr><th class="px-4 py-3"><input type="checkbox" id="selectAllArchived" onchange="toggleSelectAllArchived()" class="rounded"></th><th class="px-4 py-3">Name</th><th class="px-4 py-3">Email</th><th class="px-4 py-3">Role</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
                 <tbody id="archivedUsersBody" class="divide-y divide-gray-100"></tbody>
             </table>
         </div>
         <!-- Archived Pagination -->
         <div class="px-4 py-3 border-t flex flex-col items-center gap-2">
             <span id="archivedPageInfo" class="text-sm text-gray-500"></span>
-            <div class="flex gap-1">
+            <div class="flex gap-1 items-center">
+                <select id="archivedItemsPerPage" class="px-2 py-1.5 text-sm border rounded" onchange="onItemsPerPageChange()">
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="30">30</option>
+                    <option value="50">50</option>
+                </select>
                 <button onclick="archivedChangePage(-1)" id="archivedPrevBtn" class="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fas fa-chevron-left mr-1"></i>Prev</button>
                 <span id="archivedPageNums" class="flex gap-1"></span>
                 <button onclick="archivedChangePage(1)" id="archivedNextBtn" class="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">Next<i class="fas fa-chevron-right ml-1"></i></button>
@@ -282,7 +427,7 @@ $role_icons = ['super_admin'=>'fa-crown','admin'=>'fa-user-shield','guidance_adv
             <div class="grid grid-cols-2 gap-4">
                 <div><label class="block text-sm font-medium text-gray-700 mb-1">Role *</label>
                     <select name="role" id="createRole" required onchange="toggleStudentFields()" class="w-full px-3 py-2 border rounded-lg text-sm">
-                        <option value="student">Student</option><option value="examinee">Examinee</option><option value="guidance_advocate">Guidance Advocate</option><option value="admin">Admin</option>
+                        <option value="student">Student</option><option value="examinee">Examinee</option><option value="guidance_advocate">Guidance Advocate</option><option value="admin">Admin</option><option value="super_admin">Super Admin</option>
                     </select>
                 </div>
                 <div id="positionField"><label class="block text-sm font-medium text-gray-700 mb-1">Position</label><input type="text" name="position" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
@@ -320,7 +465,7 @@ $role_icons = ['super_admin'=>'fa-crown','admin'=>'fa-user-shield','guidance_adv
             <div class="grid grid-cols-2 gap-4">
                 <div><label class="block text-sm font-medium text-gray-700 mb-1">Role *</label>
                     <select name="role" id="edit_role" required class="w-full px-3 py-2 border rounded-lg text-sm">
-                        <option value="student">Student</option><option value="examinee">Examinee</option><option value="guidance_advocate">Guidance Advocate</option><option value="admin">Admin</option>
+                        <option value="student">Student</option><option value="examinee">Examinee</option><option value="guidance_advocate">Guidance Advocate</option><option value="admin">Admin</option><option value="super_admin">Super Admin</option>
                     </select>
                 </div>
                 <div><label class="block text-sm font-medium text-gray-700 mb-1">Student ID</label><input type="text" name="student_id" id="edit_student_id" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
@@ -371,177 +516,3 @@ $role_icons = ['super_admin'=>'fa-crown','admin'=>'fa-user-shield','guidance_adv
         </form>
     </div>
 </div>
-
-<script>
-const BASE = 'layout.php?page=user_management';
-let searchTimer;
-
-function toggleStudentFields() {
-    const role = document.getElementById('createRole').value;
-    document.getElementById('studentIdField').style.display = role==='student' ? 'grid' : 'none';
-    document.getElementById('positionField').style.display = ['admin','guidance_advocate','super_admin'].includes(role) ? 'block' : 'none';
-}
-
-function toggleExamineeConversion() {
-    document.getElementById('examineeFields').classList.toggle('hidden', !document.getElementById('convertExaminee').checked);
-}
-
-function fillExamineeData() {
-    const sel = document.getElementById('examineeSelect');
-    const opt = sel.options[sel.selectedIndex];
-    if (opt.value) {
-        document.getElementById('create_first_name').value = opt.dataset.first || '';
-        document.getElementById('create_middle_name').value = opt.dataset.middle || '';
-        document.getElementById('create_last_name').value = opt.dataset.last || '';
-        document.getElementById('create_email').value = opt.dataset.email || '';
-        document.getElementById('createRole').value = 'student';
-        toggleStudentFields();
-    }
-}
-
-function editUser(data) {
-    document.getElementById('edit_user_id').value = data.id;
-    document.getElementById('edit_first_name').value = data.first_name || '';
-    document.getElementById('edit_middle_name').value = data.middle_name || '';
-    document.getElementById('edit_last_name').value = data.last_name || '';
-    document.getElementById('edit_email').value = data.email || '';
-    document.getElementById('edit_role').value = data.role || 'student';
-    document.getElementById('edit_student_id').value = data.student_id || '';
-    document.getElementById('edit_is_active').checked = data.is_active == 1;
-    openModal('editUserModal');
-}
-
-function openResetPassword(id, name) {
-    document.getElementById('reset_user_id').value = id;
-    document.getElementById('reset_user_name').textContent = name;
-    openModal('resetPasswordModal');
-}
-
-function archiveUser(id, name) {
-    Swal.fire({ title: 'Archive User?', html: `Are you sure you want to archive <strong>${name}</strong>?`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#dc2626', confirmButtonText: 'Archive', cancelButtonText: 'Cancel' })
-    .then(r => { if (r.isConfirmed) fetch(BASE+'&action=archive&id='+id).then(()=>Swal.fire('Archived!','User has been archived.','success').then(()=>location.reload())); });
-}
-
-function unarchiveUser(id, name) {
-    Swal.fire({ title: 'Restore User?', html: `Restore <strong>${name}</strong>?`, icon: 'question', showCancelButton: true, confirmButtonColor: '#16a34a', confirmButtonText: 'Restore' })
-    .then(r => { if (r.isConfirmed) fetch(BASE+'&action=unarchive&id='+id).then(()=>Swal.fire('Restored!','User has been restored.','success').then(()=>location.reload())); });
-}
-
-function toggleStatus(id) {
-    fetch(BASE+'&action=toggle_status&id='+id).then(r=>r.json()).then(()=>location.reload());
-}
-
-function debounceSearch() {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => { activePage = 1; fetchActiveUsers(); }, 300);
-}
-
-// Init
-toggleStudentFields();
-
-// Server-side pagination — Active Users
-let activePage = 1;
-const RC_MAP = {'super_admin':'purple','admin':'red','guidance_advocate':'green','student':'blue','examinee':'yellow'};
-
-function fetchActiveUsers() {
-    const q = document.getElementById('searchInput').value;
-    const role = document.getElementById('roleFilter').value;
-    const url = BASE + `&action=fetch_active&p=${activePage}&q=${encodeURIComponent(q)}&role=${encodeURIComponent(role)}`;
-    fetch(url).then(r=>r.json()).then(data => {
-        const tbody = document.getElementById('activeUsersBody');
-        tbody.innerHTML = '';
-        if (!data.rows || data.rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-400">No users found</td></tr>';
-        } else {
-            data.rows.forEach(u => {
-                const rc = RC_MAP[u.role]||'gray';
-                const name = (u.last_name||'') + ', ' + (u.first_name||'') + (u.middle_name ? ' ' + u.middle_name : '');
-                const escName = (u.first_name||'') + ' ' + (u.last_name||'');
-                tbody.innerHTML += `<tr class="hover:bg-gray-50">
-                    <td class="px-4 py-3 font-medium break-words">${esc(name)}</td>
-                    <td class="px-4 py-3 text-gray-500 break-all">${esc(u.email||'—')}</td>
-                    <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs font-medium bg-${rc}-100 text-${rc}-700 capitalize">${u.role.replace(/_/g,' ')}</span></td>
-                    <td class="px-4 py-3 text-gray-500 break-all">${esc(u.student_id||'—')}</td>
-                    <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs ${u.is_active?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}">${u.is_active?'Active':'Inactive'}</span></td>
-                    <td class="px-4 py-3 text-gray-400 text-xs">${new Date(u.created_at).toLocaleDateString()}</td>
-                    <td class="px-4 py-3 text-right">
-                        <div class="flex justify-end gap-1">
-                            <button onclick='editUser(${JSON.stringify(u).replace(/'/g,"&#39;")})' class="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="Edit"><i class="fas fa-edit"></i></button>
-                            <button onclick="toggleStatus(${u.id})" class="p-1.5 text-yellow-600 hover:bg-yellow-50 rounded" title="Toggle"><i class="fas fa-power-off"></i></button>
-                            <button onclick="openResetPassword(${u.id},'${esc(escName).replace(/'/g,"\\'")}')" class="p-1.5 text-orange-600 hover:bg-orange-50 rounded" title="Reset Password"><i class="fas fa-key"></i></button>
-                            <button onclick="archiveUser(${u.id},'${esc(escName).replace(/'/g,"\\'")}')" class="p-1.5 text-red-600 hover:bg-red-50 rounded" title="Archive"><i class="fas fa-archive"></i></button>
-                        </div>
-                    </td>
-                </tr>`;
-            });
-        }
-        renderPagination('active', data.total, data.per_page, data.page);
-    });
-}
-
-function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-
-// Server-side pagination — Archived Users
-let archivedPage = 1;
-
-function fetchArchivedUsers() {
-    fetch(BASE + `&action=fetch_archived&p=${archivedPage}`).then(r=>r.json()).then(data => {
-        const tbody = document.getElementById('archivedUsersBody');
-        tbody.innerHTML = '';
-        if (!data.rows || data.rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-gray-400">No archived users</td></tr>';
-        } else {
-            data.rows.forEach(u => {
-                const name = (u.last_name||'') + ', ' + (u.first_name||'');
-                const escName = (u.first_name||'') + ' ' + (u.last_name||'');
-                tbody.innerHTML += `<tr class="hover:bg-gray-50 opacity-70">
-                    <td class="px-4 py-3 break-words">${esc(name)}</td>
-                    <td class="px-4 py-3 text-gray-500 break-all">${esc(u.email||'—')}</td>
-                    <td class="px-4 py-3 capitalize text-gray-500">${u.role.replace(/_/g,' ')}</td>
-                    <td class="px-4 py-3 text-right"><button onclick="unarchiveUser(${u.id},'${esc(escName).replace(/'/g,"\\'")}')" class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200"><i class="fas fa-undo mr-1"></i>Restore</button></td>
-                </tr>`;
-            });
-        }
-        renderPagination('archived', data.total, data.per_page, data.page);
-    });
-}
-
-// Shared pagination renderer
-function renderPagination(prefix, total, perPage, page) {
-    const totalPages = Math.max(1, Math.ceil(total / perPage));
-    const start = (page - 1) * perPage + 1;
-    const end = Math.min(page * perPage, total);
-    document.getElementById(prefix + 'PageInfo').textContent = total === 0 ? 'No records' : `Showing ${start}-${end} of ${total}`;
-    document.getElementById(prefix + 'PrevBtn').disabled = page <= 1;
-    document.getElementById(prefix + 'NextBtn').disabled = page >= totalPages;
-    const nums = document.getElementById(prefix + 'PageNums');
-    nums.innerHTML = '';
-    const maxBtns = 5;
-    let sp = Math.max(1, page - Math.floor(maxBtns/2));
-    let ep = Math.min(totalPages, sp + maxBtns - 1);
-    if (ep - sp < maxBtns - 1) sp = Math.max(1, ep - maxBtns + 1);
-    for (let p = sp; p <= ep; p++) {
-        const b = document.createElement('button');
-        b.textContent = p;
-        b.className = p === page ? 'px-2.5 py-1 text-sm rounded-lg bg-primary text-white' : 'px-2.5 py-1 text-sm rounded-lg border hover:bg-gray-50';
-        b.onclick = () => {
-            if (prefix === 'active') { activePage = p; fetchActiveUsers(); }
-            else { archivedPage = p; fetchArchivedUsers(); }
-        };
-        nums.appendChild(b);
-    }
-}
-
-function activeChangePage(delta) { activePage += delta; fetchActiveUsers(); }
-function archivedChangePage(delta) { archivedPage += delta; fetchArchivedUsers(); }
-
-// Initial load
-fetchActiveUsers();
-
-// Also load archived when tab is switched
-const origSwitchTab = switchTab;
-switchTab = function(tab) {
-    origSwitchTab(tab);
-    if (tab === 'archived') fetchArchivedUsers();
-};
-</script>

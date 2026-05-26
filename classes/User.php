@@ -158,8 +158,30 @@ class User {
     }
 
     public function toggleUserStatus($id) {
-        $stmt = $this->conn->prepare("UPDATE {$this->table_name} SET is_active = NOT is_active WHERE id = ?");
-        return $stmt->execute([$id]);
+        try {
+            // First get current status
+            $stmt = $this->conn->prepare("SELECT is_active FROM {$this->table_name} WHERE id = ?");
+            $stmt->execute([$id]);
+            $current = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$current) {
+                error_log("ToggleUserStatus: User not found with ID=$id");
+                return false;
+            }
+            
+            $new_status = $current['is_active'] == 1 ? 0 : 1;
+            error_log("ToggleUserStatus: ID=$id, Current status=" . $current['is_active'] . ", New status=$new_status");
+            
+            // Update with new status
+            $stmt = $this->conn->prepare("UPDATE {$this->table_name} SET is_active = ? WHERE id = ?");
+            $result = $stmt->execute([$new_status, $id]);
+            error_log("ToggleUserStatus: Update result=" . ($result ? 'true' : 'false') . ", Rows affected=" . $stmt->rowCount());
+            
+            return $result;
+        } catch (Exception $e) {
+            error_log("ToggleUserStatus Error: " . $e->getMessage());
+            throw $e;
+        }
     }
 
     public function searchUsers($search_term, $role_filter = null, $include_archived = false) {

@@ -51,10 +51,14 @@ $pages = [
     'ses_analytics' => 'SES Analytics',
     'olsat_reports' => 'OLSAT Reports',
     'user_management' => 'User Management',
+    'missing_student_ids' => 'Missing Student IDs',
     'academic_settings' => 'Academic Settings',
     'system_settings' => 'System Settings',
     'backup_restore' => 'Backup & Restore',
     'system_logs' => 'System Logs',
+    'admin_view_pds' => 'View PDS',
+    'counseling_history' => 'Counseling History',
+    'survey_results' => 'Survey Results',
 ];
 
 $page = $_GET['page'] ?? 'dashboard';
@@ -63,7 +67,7 @@ if (!array_key_exists($page, $pages)) $page = 'dashboard';
 // Role-based access check
 $student_pages = ['dashboard','profile','fill_pds','view_pds','book_appointment','view_appointments','complete_profile','multiple_intelligence_survey','survey_thankyou'];
 $examinee_pages = ['dashboard','profile','book_exam','view_exam_results','view_application'];
-$admin_pages = ['dashboard','profile','student_records','manage_counseling','manage_exams','manage_announcements','schedules','daily_limits','counseling_reports','ses_analytics','olsat_reports','user_management','academic_settings','system_settings','backup_restore','system_logs'];
+$admin_pages = ['dashboard','profile','student_records','manage_counseling','manage_exams','manage_announcements','schedules','daily_limits','counseling_reports','ses_analytics','olsat_reports','user_management','academic_settings','system_settings','backup_restore','system_logs','admin_view_pds','counseling_history','survey_results'];
 
 if (in_array($role, ['student']) && !in_array($page, $student_pages)) $page = 'dashboard';
 if ($role === 'examinee' && !in_array($page, $examinee_pages)) $page = 'dashboard';
@@ -102,6 +106,9 @@ $file_map = [
     'system_settings' => __DIR__ . '/pages/admin/system_settings.php',
     'backup_restore' => __DIR__ . '/pages/admin/backup_restore.php',
     'system_logs' => __DIR__ . '/pages/admin/system_logs.php',
+    'admin_view_pds' => __DIR__ . '/pages/admin/view_pds.php',
+    'counseling_history' => __DIR__ . '/pages/admin/counseling_history.php',
+    'survey_results' => __DIR__ . '/pages/admin/survey_results.php',
 ];
 $content_file = $file_map[$page] ?? __DIR__ . '/pages/index.php';
 

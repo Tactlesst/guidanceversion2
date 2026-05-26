@@ -13,8 +13,24 @@
 
         <?php if (in_array($role, ['admin','guidance_advocate'])): ?>
         <!-- Admin / Guidance Advocate Menu -->
-        <a href="layout.php?page=student_records" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='student_records'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-users w-5 text-center"></i><span>Student Management</span></a>
+        <div>
+            <button onclick="toggleSubmenu('student_management')" class="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg <?= in_array($page,['student_records','admin_view_pds','counseling_history','survey_results'])?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-users w-5 text-center"></i><span>Student Management</span>
+                </div>
+                <i id="student_management-chevron" class="fas fa-chevron-down text-xs transition-transform <?= in_array($page,['student_records','admin_view_pds','counseling_history','survey_results'])?'rotate-180':'' ?>"></i>
+            </button>
+            <div id="student_management-submenu" class="<?= in_array($page,['student_records','admin_view_pds','counseling_history','survey_results'])?'':'hidden' ?> pl-8 mt-1 space-y-1">
+                <a href="layout.php?page=student_records" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='student_records'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
+                    <i class="fas fa-list w-4 text-center"></i><span>Student Records</span></a>
+                <a href="layout.php?page=admin_view_pds" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='admin_view_pds'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
+                    <i class="fas fa-file-alt w-4 text-center"></i><span>Personal Data Sheet</span></a>
+                <a href="layout.php?page=counseling_history" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='counseling_history'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
+                    <i class="fas fa-history w-4 text-center"></i><span>Counseling History</span></a>
+                <a href="layout.php?page=survey_results" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='survey_results'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
+                    <i class="fas fa-chart-pie w-4 text-center"></i><span>Survey Results</span></a>
+            </div>
+        </div>
         <a href="layout.php?page=manage_counseling" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='manage_counseling'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
             <i class="fas fa-comments w-5 text-center"></i><span>Counseling Management</span></a>
         <a href="layout.php?page=manage_exams" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='manage_exams'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">

@@ -58,6 +58,17 @@ if (in_array($role, ['super_admin','admin','guidance_advocate'])) {
         // New users today
         $stats['new_users_today'] = $db->query("SELECT COUNT(*) FROM users WHERE DATE(created_at) = CURDATE() AND role IN ('student','examinee')")->fetchColumn();
 
+        // Students without student IDs
+        $students_without_id = $db->query("SELECT COUNT(*) FROM users u LEFT JOIN student_profiles sp ON u.id=sp.user_id WHERE u.role='student' AND (u.archived=0 OR u.archived IS NULL) AND (sp.student_id IS NULL OR sp.student_id='')")->fetchColumn();
+        
+        // Get students without student IDs for modal
+        $students_missing_id = [];
+        if ($students_without_id > 0) {
+            $stmt = $db->prepare("SELECT u.id, u.first_name, u.middle_name, u.last_name, u.email, u.created_at, sp.student_id FROM users u LEFT JOIN student_profiles sp ON u.id=sp.user_id WHERE u.role='student' AND (u.archived=0 OR u.archived IS NULL) AND (sp.student_id IS NULL OR sp.student_id='') ORDER BY u.created_at DESC LIMIT 20");
+            $stmt->execute();
+            $students_missing_id = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+
         $grade_stats = $db->query("SELECT sp.grade_level, COUNT(*) as cnt FROM student_profiles sp JOIN users u ON sp.user_id=u.id WHERE u.role='student' AND (u.archived=0 OR u.archived IS NULL) GROUP BY sp.grade_level ORDER BY sp.grade_level")->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) { $grade_stats = []; }
     $recent = [];
@@ -111,6 +122,58 @@ if (in_array($role, ['student','examinee'])) {
 ?>
 
 <div class="space-y-6">
+    <?php if($role === 'super_admin'): ?>
+    <div>
+        <h1 class="text-2xl font-bold text-primary">Super Admin Dashboard</h1>
+        <p class="text-sm text-gray-500">Welcome back, <span class="font-semibold text-gray-700"><?= $welcome_name ?></span>! You have full system control and access.</p>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center justify-between border-l-4 border-l-primary">
+            <div>
+                <div class="text-xs text-gray-500">Total Users</div>
+                <div class="text-2xl font-bold text-gray-800"><?= $stats['total_users'] ?></div>
+                <div class="text-xs text-gray-400 mt-1">All system users</div>
+            </div>
+            <div class="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <i class="fas fa-users"></i>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center justify-between border-l-4 border-l-green-500">
+            <div>
+                <div class="text-xs text-gray-500">Active Users</div>
+                <div class="text-2xl font-bold text-gray-800"><?= $stats['active_users'] ?></div>
+                <div class="text-xs text-gray-400 mt-1">Currently active</div>
+            </div>
+            <div class="w-11 h-11 rounded-xl bg-green-50 text-green-600 flex items-center justify-center">
+                <i class="fas fa-user-check"></i>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center justify-between border-l-4 border-l-blue-500">
+            <div>
+                <div class="text-xs text-gray-500">Total Students</div>
+                <div class="text-2xl font-bold text-gray-800"><?= $stats['total_students'] ?></div>
+                <div class="text-xs text-gray-400 mt-1">Registered students</div>
+            </div>
+            <div class="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                <i class="fas fa-user-graduate"></i>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center justify-between border-l-4 border-l-cyan-500">
+            <div>
+                <div class="text-xs text-gray-500">All Examinees</div>
+                <div class="text-2xl font-bold text-gray-800"><?= $stats['total_examinees'] ?></div>
+                <div class="text-xs text-gray-400 mt-1">Examinees</div>
+            </div>
+            <div class="w-11 h-11 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center">
+                <i class="fas fa-user-graduate"></i>
+            </div>
+        </div>
+    </div>
+    <?php else: ?>
     <div>
         <h1 class="text-2xl font-bold text-primary">Dashboard Overview</h1>
         <p class="text-sm text-gray-500">Welcome back, <span class="font-semibold text-gray-700"><?= $welcome_name ?></span>! Here's what's happening today.</p>
@@ -161,10 +224,42 @@ if (in_array($role, ['student','examinee'])) {
             </div>
         </div>
     </div>
+    <?php endif; ?>
 
     <div>
         <h2 class="text-sm font-semibold text-gray-700 mb-3">Quick Actions</h2>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <?php if($role === 'super_admin'): ?>
+            <?php if ($students_without_id > 0): ?>
+            <a href="#" onclick="openMissingIdModal(); return false;" class="bg-yellow-50 rounded-2xl shadow-sm border border-yellow-200 p-5 hover:shadow-md transition">
+                <div class="w-11 h-11 rounded-2xl bg-yellow-100 text-yellow-700 flex items-center justify-center mb-3"><i class="fas fa-exclamation-triangle"></i></div>
+                <div class="font-semibold text-gray-800">Missing Student IDs</div>
+                <div class="text-xs text-yellow-700 mt-1"><?= $students_without_id ?> student(s) without ID</div>
+            </a>
+            <?php endif; ?>
+            <a href="layout.php?page=user_management" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition">
+                <div class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3"><i class="fas fa-users-cog"></i></div>
+                <div class="font-semibold text-gray-800">User Management</div>
+                <div class="text-xs text-gray-500 mt-1">Create, edit, and manage all users</div>
+            </a>
+            <a href="layout.php?page=academic_settings" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition">
+                <div class="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3"><i class="fas fa-graduation-cap"></i></div>
+                <div class="font-semibold text-gray-800">Academic Settings</div>
+                <div class="text-xs text-gray-500 mt-1">Configure academic year and terms</div>
+            </a>
+            <a href="layout.php?page=system_logs" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition">
+                <div class="w-11 h-11 rounded-2xl bg-gray-50 text-gray-600 flex items-center justify-center mb-3"><i class="fas fa-file-alt"></i></div>
+                <div class="font-semibold text-gray-800">System Logs</div>
+                <div class="text-xs text-gray-500 mt-1">View system activity logs</div>
+            </a>
+            <?php else: ?>
+            <?php if ($students_without_id > 0): ?>
+            <a href="#" onclick="openMissingIdModal(); return false;" class="bg-yellow-50 rounded-2xl shadow-sm border border-yellow-200 p-5 hover:shadow-md transition">
+                <div class="w-11 h-11 rounded-2xl bg-yellow-100 text-yellow-700 flex items-center justify-center mb-3"><i class="fas fa-exclamation-triangle"></i></div>
+                <div class="font-semibold text-gray-800">Missing Student IDs</div>
+                <div class="text-xs text-yellow-700 mt-1"><?= $students_without_id ?> student(s) without ID</div>
+            </a>
+            <?php endif; ?>
             <a href="layout.php?page=manage_exams" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition">
                 <div class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3"><i class="fas fa-clipboard-list"></i></div>
                 <div class="font-semibold text-gray-800">Manage Entrance Exams Appointments</div>
@@ -180,14 +275,139 @@ if (in_array($role, ['student','examinee'])) {
                 <div class="font-semibold text-gray-800">Schedule Management</div>
                 <div class="text-xs text-gray-500 mt-1">Manage events and calendar</div>
             </a>
-            <a href="layout.php?page=system_settings" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition">
-                <div class="w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mb-3"><i class="fas fa-cogs"></i></div>
-                <div class="font-semibold text-gray-800">System Settings</div>
-                <div class="text-xs text-gray-500 mt-1">Configure system features</div>
-            </a>
+            <?php endif; ?>
         </div>
     </div>
 
+    <?php if($role === 'super_admin'): ?>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden lg:col-span-2">
+            <div class="px-5 py-4 border-b border-gray-100 flex items-center gap-2 text-gray-700">
+                <i class="fas fa-history text-primary"></i>
+                <div class="font-semibold">Recent System Logs</div>
+            </div>
+            <div class="p-5">
+                <?php
+                $recent_logs = [];
+                try {
+                    $logs_query = "SELECT sl.*, u.first_name, u.last_name 
+                                  FROM system_logs sl 
+                                  LEFT JOIN users u ON sl.user_id = u.id 
+                                  ORDER BY sl.created_at DESC 
+                                  LIMIT 3";
+                    $logs_stmt = $db->prepare($logs_query);
+                    $logs_stmt->execute();
+                    $recent_logs = $logs_stmt->fetchAll(PDO::FETCH_ASSOC);
+                } catch (Exception $e) { $recent_logs = []; }
+                
+                if (!empty($recent_logs)):
+                    foreach ($recent_logs as $log):
+                        $icon_map = [
+                            'error' => ['icon' => 'fa-exclamation-circle', 'color' => 'red'],
+                            'warning' => ['icon' => 'fa-exclamation-triangle', 'color' => 'yellow'],
+                            'info' => ['icon' => 'fa-info-circle', 'color' => 'blue'],
+                            'success' => ['icon' => 'fa-check-circle', 'color' => 'green'],
+                            'login' => ['icon' => 'fa-sign-in-alt', 'color' => 'indigo'],
+                            'logout' => ['icon' => 'fa-sign-out-alt', 'color' => 'gray'],
+                            'admin_action' => ['icon' => 'fa-user-shield', 'color' => 'purple'],
+                            'system' => ['icon' => 'fa-cog', 'color' => 'blue']
+                        ];
+                        $log_style = $icon_map[$log['log_type']] ?? ['icon' => 'fa-circle', 'color' => 'gray'];
+                        
+                        $time_diff = time() - strtotime($log['created_at']);
+                        if ($time_diff < 60) {
+                            $time_ago = 'Just now';
+                        } elseif ($time_diff < 3600) {
+                            $time_ago = floor($time_diff / 60) . ' min ago';
+                        } elseif ($time_diff < 86400) {
+                            $time_ago = floor($time_diff / 3600) . ' hr ago';
+                        } else {
+                            $time_ago = floor($time_diff / 86400) . ' day(s) ago';
+                        }
+                        
+                        $user_name = $log['first_name'] ? $log['first_name'] . ' ' . $log['last_name'] : 'System';
+                        $color_map = [
+                            'red' => 'bg-red-50 text-red-600',
+                            'yellow' => 'bg-yellow-50 text-yellow-600',
+                            'blue' => 'bg-blue-50 text-blue-600',
+                            'green' => 'bg-green-50 text-green-600',
+                            'indigo' => 'bg-indigo-50 text-indigo-600',
+                            'gray' => 'bg-gray-50 text-gray-600',
+                            'purple' => 'bg-purple-50 text-purple-600'
+                        ];
+                        $bg_class = $color_map[$log_style['color']] ?? 'bg-gray-50 text-gray-600';
+                ?>
+                    <div class="flex items-start gap-3 py-3 border-b border-gray-50 last:border-0">
+                        <div class="w-9 h-9 rounded-xl <?= $bg_class ?> flex items-center justify-center flex-shrink-0">
+                            <i class="fas <?= $log_style['icon'] ?>"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <div class="text-sm text-gray-800 font-medium"><?= htmlspecialchars($log['message']) ?></div>
+                            <div class="text-xs text-gray-400"><?= htmlspecialchars($user_name) ?> • <?= $time_ago ?></div>
+                        </div>
+                    </div>
+                <?php 
+                    endforeach;
+                else:
+                ?>
+                    <div class="text-center py-10">
+                        <div class="w-14 h-14 rounded-2xl bg-gray-50 mx-auto flex items-center justify-center text-gray-300 mb-3">
+                            <i class="fas fa-inbox text-2xl"></i>
+                        </div>
+                        <div class="text-sm text-gray-500">No system logs found</div>
+                        <div class="text-xs text-gray-400 mt-1">System activity logs will appear here</div>
+                    </div>
+                <?php endif; ?>
+                <div class="mt-3 text-center">
+                    <a href="layout.php?page=system_logs" class="inline-flex items-center gap-2 px-4 py-2 border border-primary text-primary text-sm font-semibold rounded-lg hover:bg-primary hover:text-white transition-colors">
+                        <i class="fas fa-list"></i>
+                        <span>View All Logs</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-100 flex items-center gap-2 text-gray-700">
+                <i class="fas fa-chart-pie text-primary"></i>
+                <div class="font-semibold">User Distribution</div>
+            </div>
+            <div class="p-5 space-y-3">
+                <?php
+                $user_stats = [];
+                try {
+                    $stats_query = "SELECT role, COUNT(*) as count FROM users WHERE (archived=0 OR archived IS NULL) GROUP BY role";
+                    $stats_stmt = $db->query($stats_query);
+                    $user_stats = $stats_stmt->fetchAll(PDO::FETCH_ASSOC);
+                    $total_users = array_sum(array_column($user_stats, 'count'));
+                } catch (Exception $e) { $user_stats = []; $total_users = 0; }
+                
+                $role_colors = [
+                    'super_admin' => 'bg-gray-800',
+                    'admin' => 'bg-red-500',
+                    'guidance_advocate' => 'bg-green-500',
+                    'student' => 'bg-indigo-500',
+                    'examinee' => 'bg-yellow-500'
+                ];
+                
+                foreach($user_stats as $stat):
+                    $percentage = $total_users > 0 ? ($stat['count'] / $total_users) * 100 : 0;
+                    $bg_color = $role_colors[$stat['role']] ?? 'bg-gray-400';
+                ?>
+                <div class="mb-3">
+                    <div class="flex justify-between mb-1">
+                        <span class="text-sm font-medium text-gray-700"><?= ucfirst(str_replace('_', ' ', $stat['role'])) ?></span>
+                        <span class="text-sm text-gray-500"><?= $stat['count'] ?></span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div class="<?= $bg_color ?> h-2 rounded-full" style="width: <?= $percentage ?>%"></div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </div>
+    <?php else: ?>
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden lg:col-span-2">
             <div class="px-5 py-4 border-b border-gray-100 flex items-center gap-2 text-gray-700">
@@ -278,6 +498,7 @@ if (in_array($role, ['student','examinee'])) {
             </div>
         </div>
     </div>
+    <?php endif; ?>
 </div>
 
 <?php elseif ($role === 'examinee'): ?>
@@ -496,4 +717,89 @@ if (in_array($role, ['student','examinee'])) {
         </div>
     </div>
 </div>
+<?php endif; ?>
+
+<?php if (in_array($role, ['super_admin','admin','guidance_advocate']) && $students_without_id > 0): ?>
+<!-- Missing Student IDs Modal -->
+<div id="missingIdModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <div class="bg-yellow-500 text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
+            <h3 class="text-lg font-bold"><i class="fas fa-exclamation-triangle mr-2"></i>Students Without Student IDs</h3>
+            <button onclick="closeModal('missingIdModal')" class="text-white/80 hover:text-white"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="p-6">
+            <div class="mb-4">
+                <input type="text" id="missingIdSearch" placeholder="Search by name or email..." class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-yellow-500 focus:outline-none" oninput="filterMissingIds()">
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 text-gray-600 text-left">
+                        <tr>
+                            <th class="px-4 py-3">Name</th>
+                            <th class="px-4 py-3">Email</th>
+                            <th class="px-4 py-3">Student ID</th>
+                            <th class="px-4 py-3">Created</th>
+                        </tr>
+                    </thead>
+                    <tbody id="missingIdTableBody" class="divide-y divide-gray-100">
+                        <?php foreach ($students_missing_id as $student): ?>
+                        <tr class="hover:bg-gray-50 <?= $role === 'super_admin' ? 'cursor-pointer' : '' ?>" <?= $role === 'super_admin' ? "onclick=\"window.location.href='layout.php?page=missing_student_ids&q=" . urlencode($student['first_name'] . ' ' . $student['last_name']) . "'" : '' ?>>
+                            <td class="px-4 py-3 font-medium"><?= htmlspecialchars(($student['last_name'] ?? '') . ', ' . ($student['first_name'] ?? '')) ?></td>
+                            <td class="px-4 py-3 text-gray-500 break-all"><?= htmlspecialchars($student['email'] ?? '—') ?></td>
+                            <td class="px-4 py-3 text-gray-500"><?= htmlspecialchars($student['student_id'] ?? '—') ?></td>
+                            <td class="px-4 py-3 text-gray-400 text-xs"><?= date('M d, Y', strtotime($student['created_at'])) ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-4 flex justify-end gap-3">
+                <button onclick="closeModal('missingIdModal')" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancel</button>
+                <?php if($role === 'super_admin'): ?>
+                <a href="layout.php?page=user_management&filter=missing_id" class="px-4 py-2 bg-yellow-500 text-white rounded-lg text-sm hover:bg-yellow-600">Go to User Management</a>
+                <?php else: ?>
+                <button onclick="sendMissingIdNotification()" class="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">Send Notification</button>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function openMissingIdModal() {
+    openModal('missingIdModal');
+}
+
+function sendMissingIdNotification() {
+    Swal.fire({
+        title: 'Send Notification',
+        text: 'This will send a notification to all students without student IDs reminding them to complete their profile.',
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonColor: '#3b82f6',
+        confirmButtonText: 'Send Notification',
+        cancelButtonText: 'Cancel'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            Swal.fire({
+                title: 'Notification Sent!',
+                text: 'Students have been notified about their missing student IDs.',
+                icon: 'success',
+                confirmButtonColor: '#3b82f6'
+            }).then(() => {
+                closeModal('missingIdModal');
+            });
+        }
+    });
+}
+
+function filterMissingIds() {
+    const search = document.getElementById('missingIdSearch').value.toLowerCase();
+    const rows = document.querySelectorAll('#missingIdTableBody tr');
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(search) ? '' : 'none';
+    });
+}
+</script>
 <?php endif; ?>

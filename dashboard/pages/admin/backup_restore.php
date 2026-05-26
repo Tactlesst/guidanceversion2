@@ -8,20 +8,187 @@ $msgs = fetchSessionMessages();
 $success_message = $msgs['success'];
 $error_message = $msgs['error'];
 
+// Backup directory
+$backup_dir = __DIR__ . '/../../../backups';
+if (!is_dir($backup_dir)) {
+    mkdir($backup_dir, 0755, true);
+}
+
 // Handle backup/restore actions
 if ($_POST) {
     if (isset($_POST['create_backup'])) {
-        // TODO: Implement backup functionality
-        $_SESSION['success_message'] = "Backup feature coming soon!";
+        try {
+            // Get database connection (Database class already loaded)
+            $database = new Database();
+            $conn = $database->getConnection();
+            
+            // Get database name from connection
+            $db_name = $conn->query("SELECT DATABASE()")->fetchColumn();
+            
+            // Create backup filename with timestamp
+            $backup_file = $backup_dir . '/backup_' . date('Y-m-d_H-i-s') . '.sql';
+            
+            // Use mysqldump to create backup
+            $host = 'localhost';
+            $username = 'root';
+            $password = '';
+            
+            $command = "mysqldump --host={$host} --user={$username} --password={$password} {$db_name} > {$backup_file} 2>&1";
+            exec($command, $output, $return_code);
+            
+            if ($return_code === 0 && file_exists($backup_file)) {
+                $_SESSION['success_message'] = "Backup created successfully: " . basename($backup_file);
+                logAdminAction('create_backup', "Created database backup: " . basename($backup_file), null, $conn);
+            } else {
+                // Fallback to PHP-based backup if mysqldump fails
+                $backup_file = createPHPBackup($conn, $backup_dir);
+                if ($backup_file) {
+                    $_SESSION['success_message'] = "Backup created successfully: " . basename($backup_file);
+                    logAdminAction('create_backup', "Created database backup (PHP fallback): " . basename($backup_file), null, $conn);
+                } else {
+                    $_SESSION['error_message'] = "Failed to create backup. Please check server permissions.";
+                }
+            }
+        } catch (Exception $e) {
+            $_SESSION['error_message'] = "Backup failed: " . $e->getMessage();
+        }
         header("Location: layout.php?page=backup_restore");
         exit();
     }
+    
     if (isset($_POST['restore_backup'])) {
-        // TODO: Implement restore functionality
-        $_SESSION['success_message'] = "Restore feature coming soon!";
+        try {
+            if (!isset($_FILES['backup_file']) || $_FILES['backup_file']['error'] !== UPLOAD_ERR_OK) {
+                $_SESSION['error_message'] = "Please select a valid backup file.";
+                header("Location: layout.php?page=backup_restore");
+                exit();
+            }
+            
+            $uploaded_file = $_FILES['backup_file']['tmp_name'];
+            $file_ext = strtolower(pathinfo($_FILES['backup_file']['name'], PATHINFO_EXTENSION));
+            
+            if ($file_ext !== 'sql') {
+                $_SESSION['error_message'] = "Only .sql files are allowed.";
+                header("Location: layout.php?page=backup_restore");
+                exit();
+            }
+            
+            // Get database connection
+            $database = new Database();
+            $conn = $database->getConnection();
+            
+            // Read and execute SQL file
+            $sql = file_get_contents($uploaded_file);
+            if ($sql === false) {
+                throw new Exception("Failed to read backup file.");
+            }
+            
+            // Split SQL into individual statements
+            $statements = explode(';', $sql);
+            $conn->beginTransaction();
+            
+            foreach ($statements as $statement) {
+                $statement = trim($statement);
+                if (!empty($statement)) {
+                    try {
+                        $conn->exec($statement);
+                    } catch (PDOException $e) {
+                        // Log error but continue with other statements
+                        error_log("SQL statement error: " . $e->getMessage());
+                    }
+                }
+            }
+            
+            $conn->commit();
+            $_SESSION['success_message'] = "Database restored successfully!";
+            logAdminAction('restore_backup', "Restored database from backup: " . $_FILES['backup_file']['name'], null, $conn);
+        } catch (Exception $e) {
+            $_SESSION['error_message'] = "Restore failed: " . $e->getMessage();
+        }
         header("Location: layout.php?page=backup_restore");
         exit();
     }
+    
+    if (isset($_POST['delete_backup'])) {
+        $backup_file = $_POST['backup_file'];
+        $file_path = $backup_dir . '/' . basename($backup_file);
+        
+        if (file_exists($file_path) && unlink($file_path)) {
+            $_SESSION['success_message'] = "Backup deleted successfully.";
+            $database = new Database();
+            $conn = $database->getConnection();
+            logAdminAction('delete_backup', "Deleted backup: " . basename($backup_file), null, $conn);
+        } else {
+            $_SESSION['error_message'] = "Failed to delete backup file.";
+        }
+        header("Location: layout.php?page=backup_restore");
+        exit();
+    }
+}
+
+// Function to create backup using PHP (fallback)
+function createPHPBackup($conn, $backup_dir) {
+    try {
+        $db_name = $conn->query("SELECT DATABASE()")->fetchColumn();
+        $backup_file = $backup_dir . '/backup_' . date('Y-m-d_H-i-s') . '.sql';
+        $fp = fopen($backup_file, 'w');
+        
+        // Get all tables
+        $tables = $conn->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+        
+        foreach ($tables as $table) {
+            fwrite($fp, "-- Table: $table\n");
+            fwrite($fp, "DROP TABLE IF EXISTS `$table`;\n");
+            
+            // Get create table statement
+            $create_table = $conn->query("SHOW CREATE TABLE `$table`")->fetch();
+            fwrite($fp, $create_table['Create Table'] . ";\n\n");
+            
+            // Get table data
+            $rows = $conn->query("SELECT * FROM `$table`")->fetchAll(PDO::FETCH_ASSOC);
+            if (!empty($rows)) {
+                $columns = array_keys($rows[0]);
+                $columns_str = '`' . implode('`,`', $columns) . '`';
+                
+                foreach ($rows as $row) {
+                    $values = array_map(function($val) {
+                        if ($val === null) return 'NULL';
+                        if (is_numeric($val)) return $val;
+                        return "'" . addslashes($val) . "'";
+                    }, $row);
+                    $values_str = implode(',', $values);
+                    fwrite($fp, "INSERT INTO `$table` ($columns_str) VALUES ($values_str);\n");
+                }
+                fwrite($fp, "\n");
+            }
+        }
+        
+        fclose($fp);
+        return $backup_file;
+    } catch (Exception $e) {
+        error_log("PHP backup failed: " . $e->getMessage());
+        return false;
+    }
+}
+
+// Get backup files
+$backup_files = [];
+if (is_dir($backup_dir)) {
+    $files = scandir($backup_dir);
+    foreach ($files as $file) {
+        if (pathinfo($file, PATHINFO_EXTENSION) === 'sql') {
+            $file_path = $backup_dir . '/' . $file;
+            $backup_files[] = [
+                'name' => $file,
+                'size' => filesize($file_path),
+                'date' => date('Y-m-d H:i:s', filemtime($file_path))
+            ];
+        }
+    }
+    // Sort by date descending
+    usort($backup_files, function($a, $b) {
+        return strtotime($b['date']) - strtotime($a['date']);
+    });
 }
 ?>
 
@@ -96,7 +263,7 @@ if ($_POST) {
         </div>
     </div>
 
-    <!-- Backup History (Placeholder) -->
+    <!-- Backup History -->
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
         <div class="p-4 border-b bg-gray-50">
             <h3 class="text-sm font-bold text-gray-700">
@@ -104,31 +271,64 @@ if ($_POST) {
             </h3>
         </div>
         <div class="p-6">
-            <div class="text-center py-8 text-gray-400">
-                <i class="fas fa-database fa-3x mb-3 opacity-30"></i>
-                <p class="text-sm">No backup history available yet</p>
-                <p class="text-xs mt-1">Backups will appear here once created</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Coming Soon Notice -->
-    <div class="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-6">
-        <div class="flex items-start gap-4">
-            <div class="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
-                <i class="fas fa-rocket text-purple-600 text-xl"></i>
-            </div>
-            <div>
-                <h3 class="font-bold text-gray-800 mb-2">Feature Under Development</h3>
-                <p class="text-sm text-gray-600 mb-3">The backup and restore functionality is currently being developed. This feature will include:</p>
-                <ul class="text-sm text-gray-600 space-y-1 ml-4">
-                    <li><i class="fas fa-check text-green-500 mr-2"></i>Automated daily backups</li>
-                    <li><i class="fas fa-check text-green-500 mr-2"></i>One-click manual backups</li>
-                    <li><i class="fas fa-check text-green-500 mr-2"></i>Backup history and management</li>
-                    <li><i class="fas fa-check text-green-500 mr-2"></i>Selective restore options</li>
-                    <li><i class="fas fa-check text-green-500 mr-2"></i>Cloud backup integration</li>
-                </ul>
-            </div>
+            <?php if (empty($backup_files)): ?>
+                <div class="text-center py-8 text-gray-400">
+                    <i class="fas fa-database fa-3x mb-3 opacity-30"></i>
+                    <p class="text-sm">No backup history available yet</p>
+                    <p class="text-xs mt-1">Backups will appear here once created</p>
+                </div>
+            <?php else: ?>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b">
+                                <th class="text-left py-2 px-3 font-medium text-gray-700">File Name</th>
+                                <th class="text-left py-2 px-3 font-medium text-gray-700">Size</th>
+                                <th class="text-left py-2 px-3 font-medium text-gray-700">Date Created</th>
+                                <th class="text-right py-2 px-3 font-medium text-gray-700">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($backup_files as $backup): ?>
+                                <tr class="border-b hover:bg-gray-50">
+                                    <td class="py-2 px-3 text-gray-800"><?= htmlspecialchars($backup['name']) ?></td>
+                                    <td class="py-2 px-3 text-gray-600"><?= formatFileSize($backup['size']) ?></td>
+                                    <td class="py-2 px-3 text-gray-600"><?= $backup['date'] ?></td>
+                                    <td class="py-2 px-3 text-right">
+                                        <div class="flex justify-end gap-2">
+                                            <a href="backups/<?= htmlspecialchars($backup['name']) ?>" download class="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
+                                                <i class="fas fa-download mr-1"></i>Download
+                                            </a>
+                                            <form method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this backup?')">
+                                                <input type="hidden" name="backup_file" value="<?= htmlspecialchars($backup['name']) ?>">
+                                                <button type="submit" name="delete_backup" value="1" class="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200">
+                                                    <i class="fas fa-trash mr-1"></i>Delete
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 </div>
+
+<?php
+function formatFileSize($bytes) {
+    if ($bytes >= 1073741824) {
+        return number_format($bytes / 1073741824, 2) . ' GB';
+    } elseif ($bytes >= 1048576) {
+        return number_format($bytes / 1048576, 2) . ' MB';
+    } elseif ($bytes >= 1024) {
+        return number_format($bytes / 1024, 2) . ' KB';
+    } elseif ($bytes > 0) {
+        return $bytes . ' bytes';
+    } else {
+        return '0 bytes';
+    }
+}
+?>
