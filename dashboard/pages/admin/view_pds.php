@@ -23,7 +23,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
         $p_arr = [];
         
         if ($q) {
-            $w[] = "(u.first_name LIKE ? OR u.last_name LIKE ? OR sp.student_id LIKE ? OR sp.nickname LIKE ?)";
+            $w[] = "(u.first_name LIKE ? OR u.last_name LIKE ? OR sp.student_id LIKE ? OR p.nickname LIKE ?)";
             $like = "%$q%";
             $p_arr = [$like, $like, $like, $like];
         }
@@ -53,7 +53,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
         
         // Fetch page
         $order_by = $sort === 'latest' ? 'p.created_at DESC' : 'p.created_at ASC';
-        $f_query = "SELECT p.id, p.user_id, p.created_at, u.first_name, u.last_name, u.email, sp.student_id, sp.grade_level, sp.nickname FROM pds p JOIN users u ON p.user_id = u.id LEFT JOIN student_profiles sp ON u.id = sp.user_id $where ORDER BY $order_by LIMIT $per OFFSET $off";
+        $f_query = "SELECT p.id, p.user_id, p.created_at, p.gender, p.education_level, p.contact_number, p.email as pds_email, p.nickname, u.first_name, u.last_name, u.email, sp.student_id, sp.grade_level FROM pds p JOIN users u ON p.user_id = u.id LEFT JOIN student_profiles sp ON u.id = sp.user_id $where ORDER BY $order_by LIMIT $per OFFSET $off";
         $f_stmt = $db->prepare($f_query);
         $f_stmt->execute($p_arr);
         $rows = $f_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -186,6 +186,9 @@ try {
                         <th class="px-4 py-3">Name</th>
                         <th class="px-4 py-3">Student ID</th>
                         <th class="px-4 py-3">Nickname</th>
+                        <th class="px-4 py-3">Gender</th>
+                        <th class="px-4 py-3">Education Level</th>
+                        <th class="px-4 py-3">Contact Number</th>
                         <th class="px-4 py-3">Grade Level</th>
                         <th class="px-4 py-3">Submitted Date</th>
                         <th class="px-4 py-3 text-right">Actions</th>
@@ -238,7 +241,7 @@ function fetchPDSRecords() {
         tbody.innerHTML = '';
         
         if (!data.rows || data.rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">No records found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-gray-400">No records found</td></tr>';
         } else {
             data.rows.forEach(record => {
                 const name = (record.last_name||'') + ', ' + (record.first_name||'');
@@ -247,6 +250,9 @@ function fetchPDSRecords() {
                         <td class="px-4 py-3 font-medium">${esc(name)}</td>
                         <td class="px-4 py-3 text-gray-500">${esc(record.student_id||'—')}</td>
                         <td class="px-4 py-3 text-gray-500">${esc(record.nickname||'—')}</td>
+                        <td class="px-4 py-3 text-gray-500">${esc(record.gender||'—')}</td>
+                        <td class="px-4 py-3 text-gray-500">${esc(record.education_level||'—')}</td>
+                        <td class="px-4 py-3 text-gray-500">${esc(record.contact_number||'—')}</td>
                         <td class="px-4 py-3 text-gray-500">${esc(record.grade_level||'—')}</td>
                         <td class="px-4 py-3 text-gray-400 text-xs">${new Date(record.created_at).toLocaleDateString()}</td>
                         <td class="px-4 py-3 text-right">
@@ -262,8 +268,37 @@ function fetchPDSRecords() {
 }
 
 function viewPDS(id) {
-    // Open PDS view in modal or new page
-    window.open(`../pds/view_pds.php?id=${id}`, '_blank');
+    // Open PDS view in modal
+    fetch(`pages/admin/admin_view_pds.php?id=${id}`, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(r => r.text())
+    .then(html => {
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        modal.innerHTML = `
+            <div class="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto m-4">
+                <div class="sticky top-0 bg-white border-b px-4 py-3 flex justify-between items-center no-print">
+                    <h2 class="text-lg font-bold text-primary">Personal Data Sheet</h2>
+                    <div class="flex gap-2">
+                        <button onclick="printPDS(${id})" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary-dark transition-colors"><i class="fas fa-print mr-1"></i>Print</button>
+                        <button onclick="this.closest('.fixed').remove()" class="text-gray-500 hover:text-gray-700">
+                            <i class="fas fa-times text-xl"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="p-4">${html}</div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    });
+}
+
+function printPDS(id) {
+    // Open PDS in new window for printing
+    window.open(`pages/admin/admin_view_pds.php?id=${id}`, '_blank');
 }
 
 function renderPagination(total, perPage, page) {

@@ -30,55 +30,97 @@ if(!$settings->isCounselingEnabled()) {
 }
 
 $user_info = getUserInfo();
-$success_message = '';
-$error_message = '';
+$success_message = $_SESSION['success_message'] ?? '';
+$error_message = $_SESSION['error_message'] ?? '';
+unset($_SESSION['success_message']);
+unset($_SESSION['error_message']);
 
-// Check if user already has an active appointment
+// Check if user already has an active appointment (for booking restriction only, not for viewing)
 $counseling = new CounselingAppointment($db);
-if($counseling->hasActiveAppointment($user_info['id'])) {
-    $redirect = $in_layout ? 'layout.php?page=view_appointments' : 'view_appointments.php';
-    header("Location: $redirect");
-    exit();
+$has_active_appointment = $counseling->hasActiveAppointment($user_info['id']);
+
+// Handle cancel appointment
+if (isset($_POST['cancel_appointment']) && $_POST['cancel_appointment']) {
+    $appointment_id = $_POST['appointment_id'];
+    $counseling = new CounselingAppointment($db);
+    
+    // Verify the appointment belongs to the current user
+    $stmt = $db->prepare("SELECT id, user_id, status, advocate_id FROM counseling_appointments WHERE id = ?");
+    $stmt->execute([$appointment_id]);
+    $appt = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($appt && $appt['user_id'] == $user_info['id']) {
+        // Check if counselor is assigned
+        if (!empty($appt['advocate_id'])) {
+            $error_message = "Cannot cancel an appointment that has been assigned to a counselor. Please contact the guidance office for assistance.";
+        }
+        // Only allow cancellation of pending, confirmed, or in_progress appointments
+        elseif (in_array($appt['status'], ['pending', 'confirmed', 'in_progress'])) {
+            if ($counseling->cancelAppointment($appointment_id)) {
+                $_SESSION['success_message'] = "Your appointment has been cancelled successfully.";
+                // Redirect to prevent form resubmission
+                $redirect_url = $in_layout ? 'layout.php?page=book_appointment' : 'book_appointment.php';
+                header("Location: $redirect_url");
+                exit();
+            } else {
+                $error_message = "Failed to cancel your appointment. Please try again.";
+            }
+        } else {
+            $error_message = "Cannot cancel an appointment that is already " . $appt['status'] . ".";
+        }
+    } else {
+        $error_message = "Invalid appointment.";
+    }
 }
 
 // Handle POST for booking appointment
 if($_POST) {
-    $counseling->user_id = $user_info['id'];
-    $counseling->appointment_date = $_POST['appointment_date'] ?? '';
-    $counseling->appointment_time = $_POST['appointment_time'] ?? '';
-    $counseling->concern_type = $_POST['concern_type'] ?? '';
-    $counseling->concern_description = $_POST['concern_description'] ?? '';
-    $counseling->urgency_level = $_POST['urgency_level'] ?? '';
-    $counseling->nature_of_contact = 'walk-in';
-    $counseling->session_duration = 60;
-    $counseling->original_appointment_id = null;
-
-    // Validate date is not in the past
-    if(strtotime($counseling->appointment_date) < strtotime(date('Y-m-d'))) {
-        $error_message = "Please select a future date for your appointment.";
-    } elseif (empty($counseling->concern_type) || empty($counseling->concern_description) || empty($counseling->urgency_level)) {
-        $error_message = "Please fill in all required fields.";
+    // Prevent booking if user already has an active appointment
+    if($has_active_appointment) {
+        $error_message = "You already have an active appointment. Please complete or cancel your current appointment before booking a new one.";
     } else {
-        $appointment_id = $counseling->create();
-        if($appointment_id) {
-            $success_message = "Your counseling appointment has been booked successfully! You will be notified once a counselor is assigned.";
-            
-            // Create notification for guidance advocates
-            $notification = new Notification($db);
-            $user = new User($db);
-            $advocates_result = $user->getUsersByRole('guidance_advocate');
-            
-            while($advocate = $advocates_result->fetch(PDO::FETCH_ASSOC)) {
-                $notification->user_id = $advocate['id'];
-                $notification->title = "New Counseling Appointment";
-                $notification->message = "New counseling appointment from " . $user_info['first_name'] . " " . $user_info['last_name'];
-                $notification->type = "info";
-                $notification->related_table = "counseling_appointments";
-                $notification->related_id = $appointment_id;
-                $notification->create();
-            }
+        $counseling->user_id = $user_info['id'];
+        $counseling->appointment_date = $_POST['appointment_date'] ?? '';
+        $counseling->appointment_time = $_POST['appointment_time'] ?? '';
+        $counseling->concern_type = $_POST['concern_type'] ?? '';
+        $counseling->concern_description = $_POST['concern_description'] ?? '';
+        $counseling->urgency_level = $_POST['urgency_level'] ?? '';
+        $counseling->nature_of_contact = 'walk-in';
+        $counseling->session_duration = 60;
+        $counseling->original_appointment_id = null;
+
+        // Validate date is not in the past
+        if(strtotime($counseling->appointment_date) < strtotime(date('Y-m-d'))) {
+            $error_message = "Please select a future date for your appointment.";
+        } elseif (empty($counseling->concern_type) || empty($counseling->concern_description) || empty($counseling->urgency_level)) {
+            $error_message = "Please fill in all required fields.";
         } else {
-            $error_message = "Failed to submit your appointment request. Please try again.";
+            $appointment_id = $counseling->create();
+            if($appointment_id) {
+                $_SESSION['success_message'] = "Your counseling appointment has been booked successfully! You will be notified once a counselor is assigned.";
+                
+                // Create notification for guidance advocates
+                $notification = new Notification($db);
+                $user = new User($db);
+                $advocates_result = $user->getUsersByRole('guidance_advocate');
+                
+                while($advocate = $advocates_result->fetch(PDO::FETCH_ASSOC)) {
+                    $notification->user_id = $advocate['id'];
+                    $notification->title = "New Counseling Appointment";
+                    $notification->message = "New counseling appointment from " . $user_info['first_name'] . " " . $user_info['last_name'];
+                    $notification->type = "info";
+                    $notification->related_table = "counseling_appointments";
+                    $notification->related_id = $appointment_id;
+                    $notification->create();
+                }
+                
+                // Redirect to prevent form resubmission
+                $redirect_url = $in_layout ? 'layout.php?page=book_appointment' : 'book_appointment.php';
+                header("Location: $redirect_url");
+                exit();
+            } else {
+                $error_message = "Failed to submit your appointment request. Please try again.";
+            }
         }
     }
 }
@@ -92,7 +134,7 @@ $year = isset($_GET['year']) ? (int)$_GET['year'] : $current_year;
 // Get user's existing appointments for calendar display
 $my_appointments = [];
 try {
-    $my_appts_stmt = $db->prepare("SELECT id, appointment_date, appointment_time, status FROM counseling_appointments WHERE user_id = ? AND status IN ('confirmed','in_progress','pending') ORDER BY appointment_date");
+    $my_appts_stmt = $db->prepare("SELECT id, appointment_date, appointment_time, status, concern_type, urgency_level, advocate_id FROM counseling_appointments WHERE user_id = ? AND appointment_date >= CURDATE() ORDER BY appointment_date");
     $my_appts_stmt->execute([$user_info['id']]);
     while ($row = $my_appts_stmt->fetch(PDO::FETCH_ASSOC)) {
         $my_appointments[$row['appointment_date']][] = $row;
@@ -242,13 +284,34 @@ if (!$in_layout) {
     <div class="p-5">
 <?php } ?>
 <div class="max-w-7xl mx-auto">
+    <!-- Active Appointment Warning -->
+    <?php if($has_active_appointment): ?>
+    <div class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3 shadow-lg max-w-2xl w-full mx-4">
+        <div class="w-20 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 flex-shrink-0">
+            <i class="fas fa-exclamation-triangle"></i>
+        </div>
+        <div class="flex-1">
+            <p class="font-semibold text-amber-800">You have an active appointment</p>
+            <p class="text-sm text-amber-700">Please complete or cancel your current appointment before booking a new one. You can still view the calendar to see available dates.</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <button onclick="this.parentElement.parentElement.remove()" class="text-amber-600 hover:text-amber-800 p-1">
+                <i class="fas fa-times"></i>
+            </button>
+            <a href="<?= $in_layout ? 'layout.php?page=view_appointments' : 'view_appointments.php' ?>" class="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700 transition-colors">
+                View My Appointments
+            </a>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <!-- Header -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
         <div>
             <h1 class="text-xl font-bold text-primary"><i class="fas fa-calendar-plus mr-2"></i>Book Counseling Appointment</h1>
             <p class="text-sm text-gray-400">Schedule a session with our guidance counselors</p>
         </div>
-        <button onclick="openBookingModal()" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary-dark transition-colors inline-flex items-center gap-2">
+        <button onclick="openBookingModal()" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary-dark transition-colors inline-flex items-center gap-2" <?= $has_active_appointment ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : '' ?>>
             <i class="fas fa-plus"></i>Book Appointment
         </button>
     </div>
@@ -355,11 +418,11 @@ if (!$in_layout) {
                                     <?= $is_today ? 'bg-blue-50/50' : '' ?>
                                     <?= $is_holiday ? 'bg-red-50/30' : '' ?>
                                     <?= $is_past ? 'bg-gray-50/50' : '' ?>
-                                    <?= $is_bookable ? 'cursor-pointer hover:bg-blue-50 hover:border-blue-300 group' : '' ?>
+                                    <?= $is_bookable || $has_my_appt ? 'cursor-pointer hover:bg-blue-50 hover:border-blue-300 group' : '' ?>
                                     <?= $has_my_appt ? 'ring-2 ring-inset ring-green-400' : '' ?>
                                 "
-                                <?php if ($is_bookable): ?>
-                                onclick="selectDate('<?= $date ?>')"
+                                <?php if ($is_bookable || $has_my_appt): ?>
+                                onclick="handleDateClick('<?= $date ?>', <?= $has_my_appt ? 'true' : 'false' ?>)"
                                 <?php endif; ?>
                             >
                                 <div class="flex items-center justify-between">
@@ -621,11 +684,21 @@ function closeBookingModal() {
     document.getElementById('bookingModal').classList.remove('flex');
 }
 
-// Click a calendar date to book
-function selectDate(dateStr) {
+// Click a calendar date to book or view appointment
+function handleDateClick(dateStr, hasMyAppt) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const selected = new Date(dateStr + 'T00:00:00');
+    
+    // If user has an appointment on this date, show appointment details
+    if (hasMyAppt) {
+        const dateMyAppts = myAppointments[dateStr] || [];
+        if (dateMyAppts.length > 0) {
+            const appt = dateMyAppts[0];
+            showAppointmentDetails(appt, dateStr);
+            return;
+        }
+    }
     
     // Validate: no past dates
     if (selected < today) {
@@ -659,6 +732,134 @@ function selectDate(dateStr) {
     const formattedDate = selected.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     dateInfoText.textContent = `Selected: ${formattedDate}. Choose an available time slot below.`;
     dateInfo.classList.remove('hidden');
+}
+
+// Show appointment details modal
+function showAppointmentDetails(appt, dateStr) {
+    const selected = new Date(dateStr + 'T00:00:00');
+    const formattedDate = selected.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const formattedTime = new Date('2000-01-01T' + appt.appointment_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    
+    const statusColors = {
+        'pending': 'bg-amber-100 text-amber-700',
+        'confirmed': 'bg-blue-100 text-blue-700',
+        'in_progress': 'bg-indigo-100 text-indigo-700',
+        'completed': 'bg-green-100 text-green-700',
+        'cancelled': 'bg-red-100 text-red-700',
+        'missed': 'bg-red-100 text-red-700',
+        'rescheduled': 'bg-purple-100 text-purple-700'
+    };
+    
+    const concernLabels = {
+        'academic': 'Academic',
+        'personal': 'Personal',
+        'behavioral': 'Behavioral',
+        'career': 'Career Guidance',
+        'family': 'Family Issues',
+        'other': 'Other'
+    };
+    
+    const urgencyLabels = {
+        'low': 'Low',
+        'medium': 'Medium',
+        'high': 'High',
+        'urgent': 'Urgent'
+    };
+    
+    const canCancel = ['pending', 'confirmed', 'in_progress'].includes(appt.status) && !appt.advocate_id;
+    
+    Swal.fire({
+        title: '<i class="fas fa-calendar-check text-primary mr-2"></i>Your Appointment',
+        html: `
+            <div class="text-left">
+                <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                    <div class="flex items-center gap-3 mb-3">
+                        <div class="bg-primary text-white rounded-lg p-3 text-center min-w-[60px]">
+                            <div class="text-xs font-semibold uppercase">${selected.toLocaleDateString('en-US', { month: 'short' })}</div>
+                            <div class="text-2xl font-bold">${selected.getDate()}</div>
+                            <div class="text-xs opacity-80">${selected.getFullYear()}</div>
+                        </div>
+                        <div>
+                            <div class="font-bold text-lg">${formattedDate}</div>
+                            <div class="text-gray-600"><i class="far fa-clock mr-1"></i>${formattedTime}</div>
+                        </div>
+                    </div>
+                    <span class="px-3 py-1 rounded-full text-xs font-bold uppercase ${statusColors[appt.status] || 'bg-gray-100 text-gray-600'}">${appt.status.replace('_', ' ')}</span>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <div class="bg-gray-50 rounded-lg p-3">
+                        <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Concern Type</div>
+                        <div class="font-semibold text-sm">${concernLabels[appt.concern_type] || appt.concern_type}</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-3">
+                        <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Urgency Level</div>
+                        <div class="font-semibold text-sm">${urgencyLabels[appt.urgency_level] || appt.urgency_level}</div>
+                    </div>
+                </div>
+                
+                <div class="text-center text-sm text-gray-500 mt-3">
+                    <a href="<?= $in_layout ? 'layout.php?page=view_appointments' : 'view_appointments.php' ?>" class="text-primary font-semibold hover:underline">
+                        <i class="fas fa-list mr-1"></i>View All My Appointments
+                    </a>
+                </div>
+            </div>
+        `,
+        showConfirmButton: true,
+        showCancelButton: canCancel,
+        confirmButtonText: 'Close',
+        cancelButtonText: canCancel ? 'Cancel Appointment' : null,
+        confirmButtonColor: '#2563eb',
+        cancelButtonColor: '#ef4444',
+        customClass: {
+            popup: 'rounded-2xl'
+        }
+    }).then((result) => {
+        if (result.isDismissed && result.dismiss === Swal.DismissReason.cancel && canCancel) {
+            // User clicked the Cancel Appointment button
+            cancelAppointmentById(appt.id);
+        }
+    });
+}
+
+function cancelAppointmentById(appointmentId) {
+    Swal.fire({
+        title: 'Cancel Appointment?',
+        text: 'Are you sure you want to cancel this appointment? This action cannot be undone.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'Yes, Cancel It',
+        cancelButtonText: 'No, Keep It'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Create form and submit
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = window.location.href;
+            
+            const cancelInput = document.createElement('input');
+            cancelInput.type = 'hidden';
+            cancelInput.name = 'cancel_appointment';
+            cancelInput.value = '1';
+            
+            const idInput = document.createElement('input');
+            idInput.type = 'hidden';
+            idInput.name = 'appointment_id';
+            idInput.value = appointmentId;
+            
+            form.appendChild(cancelInput);
+            form.appendChild(idInput);
+            document.body.appendChild(form);
+            form.submit();
+        }
+    });
+}
+
+// Click a calendar date to book
+function selectDate(dateStr) {
+    handleDateClick(dateStr, false);
 }
 
 // Load available time slots for a given date
@@ -819,14 +1020,29 @@ openBookingModal();
 <?php endif; ?>
 
 <?php if ($success_message): ?>
+<?php if (str_contains($success_message, 'cancelled')): ?>
+Swal.fire({ 
+    icon: 'success', 
+    title: 'Appointment Cancelled!', 
+    text: '<?= addslashes($success_message) ?>', 
+    confirmButtonColor: '#2563eb',
+    confirmButtonText: 'OK'
+});
+<?php else: ?>
 Swal.fire({ 
     icon: 'success', 
     title: 'Appointment Booked!', 
     text: '<?= addslashes($success_message) ?>', 
-    confirmButtonColor: '#2563eb' 
-}).then(() => { 
-    location.href = '<?= $in_layout ? "layout.php?page=view_appointments" : "view_appointments.php" ?>'; 
+    confirmButtonColor: '#2563eb',
+    showCancelButton: true,
+    cancelButtonText: 'Close',
+    confirmButtonText: 'View My Appointments'
+}).then((result) => { 
+    if (result.isConfirmed) {
+        location.href = '<?= $in_layout ? "layout.php?page=view_appointments" : "view_appointments.php" ?>';
+    }
 });
+<?php endif; ?>
 <?php endif; ?>
 </script>
 

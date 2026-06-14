@@ -48,6 +48,37 @@ class Notification {
         }
     }
 
+    public function createNotification($user_id, $title, $message, $type = 'info', $related_table = null, $related_id = null) {
+        $query = "INSERT INTO " . $this->table_name . " 
+                  (user_id, title, message, type, related_table, related_id, created_at) 
+                  VALUES 
+                  (:user_id, :title, :message, :type, :related_table, :related_id, NOW())";
+
+        $stmt = $this->conn->prepare($query);
+
+        $title_clean = htmlspecialchars(strip_tags($title));
+        $message_clean = htmlspecialchars(strip_tags($message));
+        $type_clean = htmlspecialchars(strip_tags($type));
+        $related_table_clean = $related_table ? htmlspecialchars(strip_tags($related_table)) : null;
+
+        $stmt->bindParam(":user_id", $user_id);
+        $stmt->bindParam(":title", $title_clean);
+        $stmt->bindParam(":message", $message_clean);
+        $stmt->bindParam(":type", $type_clean);
+        $stmt->bindParam(":related_table", $related_table_clean);
+        $stmt->bindParam(":related_id", $related_id);
+
+        try {
+            if($stmt->execute()) {
+                return true;
+            }
+            return false;
+        } catch (Exception $e) {
+            error_log("Notification creation error: " . $e->getMessage());
+            return false;
+        }
+    }
+
     public function getUnreadCount($user_id) {
         $query = "SELECT COUNT(*) as count FROM " . $this->table_name . " 
                   WHERE user_id = ? AND is_read = 0";

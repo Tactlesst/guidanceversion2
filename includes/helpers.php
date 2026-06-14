@@ -40,21 +40,12 @@ function logAdminAction($action, $details = '', $user_id = null, $db = null) {
             return false;
         }
         
-        // Get user info
-        $stmt = $db->prepare("SELECT first_name, last_name, role FROM users WHERE id = ?");
-        $stmt->execute([$user_id]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$user) {
-            return false;
-        }
-        
-        $user_name = $user['first_name'] . ' ' . $user['last_name'];
         $ip_address = $_SERVER['REMOTE_ADDR'] ?? 'Unknown';
         
-        // Log the action with the correct table structure
+        // Build clean message: "Details" (user info is tracked via user_id column)
+        $message = $details ?: $action;
+        
         $stmt = $db->prepare("INSERT INTO system_logs (user_id, log_type, message, ip_address, created_at) VALUES (?, 'admin_action', ?, ?, NOW())");
-        $message = "$action: $details (User: $user_name)";
         $stmt->execute([$user_id, $message, $ip_address]);
         
         return true;

@@ -42,6 +42,7 @@ $pages = [
     'view_application' => 'My Application Status',
     // Admin pages
     'student_records' => 'Student Records',
+    'student_list_report' => 'Student List',
     'manage_counseling' => 'Counseling',
     'manage_exams' => 'Entrance Exams',
     'manage_announcements' => 'Announcements',
@@ -53,12 +54,13 @@ $pages = [
     'user_management' => 'User Management',
     'missing_student_ids' => 'Missing Student IDs',
     'academic_settings' => 'Academic Settings',
+    'admin_view_pds' => 'View PDS',
     'system_settings' => 'System Settings',
     'backup_restore' => 'Backup & Restore',
     'system_logs' => 'System Logs',
-    'admin_view_pds' => 'View PDS',
     'counseling_history' => 'Counseling History',
     'survey_results' => 'Survey Results',
+    'passed_examinees_report' => 'Passed Examinees',
 ];
 
 $page = $_GET['page'] ?? 'dashboard';
@@ -67,7 +69,7 @@ if (!array_key_exists($page, $pages)) $page = 'dashboard';
 // Role-based access check
 $student_pages = ['dashboard','profile','fill_pds','view_pds','book_appointment','view_appointments','complete_profile','multiple_intelligence_survey','survey_thankyou'];
 $examinee_pages = ['dashboard','profile','book_exam','view_exam_results','view_application'];
-$admin_pages = ['dashboard','profile','student_records','manage_counseling','manage_exams','manage_announcements','schedules','daily_limits','counseling_reports','ses_analytics','olsat_reports','user_management','academic_settings','system_settings','backup_restore','system_logs','admin_view_pds','counseling_history','survey_results'];
+$admin_pages = ['dashboard','profile','student_records','student_list_report','manage_counseling','manage_exams','manage_announcements','schedules','daily_limits','counseling_reports','ses_analytics','olsat_reports','user_management','academic_settings','system_settings','backup_restore','system_logs','admin_view_pds','counseling_history','survey_results','passed_examinees_report'];
 
 if (in_array($role, ['student']) && !in_array($page, $student_pages)) $page = 'dashboard';
 if ($role === 'examinee' && !in_array($page, $examinee_pages)) $page = 'dashboard';
@@ -93,6 +95,7 @@ $file_map = [
     'view_application' => __DIR__ . '/pages/examinee/view_application.php',
     // Admin pages
     'student_records' => __DIR__ . '/pages/admin/student_records.php',
+    'student_list_report' => __DIR__ . '/pages/admin/student_list_report.php',
     'manage_counseling' => __DIR__ . '/pages/admin/manage_counseling.php',
     'manage_exams' => __DIR__ . '/pages/admin/manage_exams.php',
     'manage_announcements' => __DIR__ . '/pages/admin/manage_announcements.php',
@@ -109,6 +112,7 @@ $file_map = [
     'admin_view_pds' => __DIR__ . '/pages/admin/view_pds.php',
     'counseling_history' => __DIR__ . '/pages/admin/counseling_history.php',
     'survey_results' => __DIR__ . '/pages/admin/survey_results.php',
+    'passed_examinees_report' => __DIR__ . '/pages/admin/passed_examinees_report.php',
 ];
 $content_file = $file_map[$page] ?? __DIR__ . '/pages/index.php';
 

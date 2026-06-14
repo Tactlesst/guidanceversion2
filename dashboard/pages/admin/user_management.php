@@ -52,7 +52,7 @@ if ($_POST) {
                         else $db->prepare("INSERT INTO student_profiles (user_id, student_id) VALUES (?,?)")->execute([$new_uid, $sid]);
                     }
                     $_SESSION['success_message'] = $_SESSION['success_message'] ?? "User created!";
-                    logAdminAction('create_user', "Created new user: {$_POST['first_name']} {$_POST['last_name']} with role: {$_POST['role']}", null, $db);
+                    logAdminAction('create_user', "Created user: {$_POST['first_name']} {$_POST['last_name']} ({$_POST['role']})", null, $db);
                 } else { $error_message = "Failed to create user."; }
             }
         } catch (Exception $e) { $error_message = $e->getMessage(); }
@@ -66,7 +66,7 @@ if ($_POST) {
             $user_obj->student_id = $_POST['student_id'] ?? '';
             if ($user_obj->updateUserComplete()) { 
                 $_SESSION['success_message'] = "User updated!"; 
-                logAdminAction('edit_user', "Updated user ID {$_POST['user_id']}: {$_POST['first_name']} {$_POST['last_name']} - Role: {$_POST['role']}, Active: " . (isset($_POST['is_active']) ? 'Yes' : 'No'), null, $db);
+                logAdminAction('edit_user', "Updated user: {$_POST['first_name']} {$_POST['last_name']}", null, $db);
                 header("Location: layout.php?page=user_management"); exit(); 
             }
             else $error_message = "Failed to update user.";
@@ -118,7 +118,9 @@ if (isset($_GET['action'])) {
                 try {
                     $result = $user_obj->archiveUser($_GET['id']);
                     if ($result) {
-                        logAdminAction('archive_user', "Archived user ID: {$_GET['id']}", null, $db);
+                        $u = $db->prepare("SELECT first_name, last_name FROM users WHERE id = ?"); $u->execute([$_GET['id']]); $un = $u->fetch(PDO::FETCH_ASSOC);
+                        $uname = $un ? "{$un['first_name']} {$un['last_name']}" : "ID {$_GET['id']}";
+                        logAdminAction('archive_user', "Archived: $uname", null, $db);
                     }
                     echo json_encode(['success'=>$result]);
                 } catch (Exception $e) {
@@ -129,7 +131,9 @@ if (isset($_GET['action'])) {
                 try {
                     $result = $user_obj->unarchiveUser($_GET['id']);
                     if ($result) {
-                        logAdminAction('unarchive_user', "Restored user ID: {$_GET['id']}", null, $db);
+                        $u = $db->prepare("SELECT first_name, last_name FROM users WHERE id = ?"); $u->execute([$_GET['id']]); $un = $u->fetch(PDO::FETCH_ASSOC);
+                        $uname = $un ? "{$un['first_name']} {$un['last_name']}" : "ID {$_GET['id']}";
+                        logAdminAction('unarchive_user', "Restored: $uname", null, $db);
                     }
                     echo json_encode(['success'=>$result]);
                 } catch (Exception $e) {
@@ -150,7 +154,7 @@ if (isset($_GET['action'])) {
                     }
                 }
                 if ($success_count > 0) {
-                    logAdminAction('bulk_archive', "Bulk archived $success_count user(s)", null, $db);
+                    logAdminAction('bulk_archive', "Archived $success_count user(s)", null, $db);
                 }
                 echo json_encode(['success'=>true, 'archived_count'=>$success_count]);
                 break;
@@ -168,7 +172,7 @@ if (isset($_GET['action'])) {
                     }
                 }
                 if ($success_count > 0) {
-                    logAdminAction('bulk_unarchive', "Bulk restored $success_count user(s)", null, $db);
+                    logAdminAction('bulk_unarchive', "Restored $success_count user(s)", null, $db);
                 }
                 echo json_encode(['success'=>true, 'restored_count'=>$success_count]);
                 break;
@@ -179,7 +183,10 @@ if (isset($_GET['action'])) {
                     $result = $user_obj->toggleUserStatus($id);
                     error_log("Toggle status result: " . ($result ? 'true' : 'false'));
                     if ($result) {
-                        logAdminAction('toggle_status', "Toggled status for user ID: $id", null, $db);
+                        $u = $db->prepare("SELECT first_name, last_name, is_active FROM users WHERE id = ?"); $u->execute([$id]); $un = $u->fetch(PDO::FETCH_ASSOC);
+                        $uname = $un ? "{$un['first_name']} {$un['last_name']}" : "ID $id";
+                        $status_word = ($un && $un['is_active']) ? 'Activated' : 'Deactivated';
+                        logAdminAction('toggle_status', "$status_word: $uname", null, $db);
                     }
                     echo json_encode(['success'=>$result]);
                 } catch (Exception $e) {

@@ -14,15 +14,17 @@
         <?php if (in_array($role, ['admin','guidance_advocate'])): ?>
         <!-- Admin / Guidance Advocate Menu -->
         <div>
-            <button onclick="toggleSubmenu('student_management')" class="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg <?= in_array($page,['student_records','admin_view_pds','counseling_history','survey_results'])?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
+            <button onclick="toggleSubmenu('student_management')" class="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg <?= in_array($page,['student_records','student_list_report','admin_view_pds','counseling_history','survey_results'])?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
                 <div class="flex items-center gap-3">
                     <i class="fas fa-users w-5 text-center"></i><span>Student Management</span>
                 </div>
-                <i id="student_management-chevron" class="fas fa-chevron-down text-xs transition-transform <?= in_array($page,['student_records','admin_view_pds','counseling_history','survey_results'])?'rotate-180':'' ?>"></i>
+                <i id="student_management-chevron" class="fas fa-chevron-down text-xs transition-transform <?= in_array($page,['student_records','student_list_report','admin_view_pds','counseling_history','survey_results'])?'rotate-180':'' ?>"></i>
             </button>
-            <div id="student_management-submenu" class="<?= in_array($page,['student_records','admin_view_pds','counseling_history','survey_results'])?'':'hidden' ?> pl-8 mt-1 space-y-1">
+            <div id="student_management-submenu" class="<?= in_array($page,['student_records','student_list_report','admin_view_pds','counseling_history','survey_results'])?'':'hidden' ?> pl-8 mt-1 space-y-1">
                 <a href="layout.php?page=student_records" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='student_records'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
                     <i class="fas fa-list w-4 text-center"></i><span>Student Records</span></a>
+                <a href="layout.php?page=student_list_report" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='student_list_report'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
+                    <i class="fas fa-clipboard-list w-4 text-center"></i><span>Student List</span></a>
                 <a href="layout.php?page=admin_view_pds" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='admin_view_pds'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
                     <i class="fas fa-file-alt w-4 text-center"></i><span>Personal Data Sheet</span></a>
                 <a href="layout.php?page=counseling_history" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='counseling_history'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
@@ -42,19 +44,21 @@
         <a href="layout.php?page=daily_limits" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='daily_limits'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
             <i class="fas fa-calendar-check w-5 text-center"></i><span>Daily Booking Limits</span></a>
         <div>
-            <button onclick="toggleSubmenu('reports')" class="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg <?= in_array($page,['counseling_reports','ses_analytics','olsat_reports'])?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
+            <button onclick="toggleSubmenu('reports')" class="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg <?= in_array($page,['counseling_reports','ses_analytics','olsat_reports','passed_examinees_report'])?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
                 <div class="flex items-center gap-3">
                     <i class="fas fa-chart-bar w-5 text-center"></i><span>Reports & Analytics</span>
                 </div>
-                <i id="reports-chevron" class="fas fa-chevron-down text-xs transition-transform <?= in_array($page,['counseling_reports','ses_analytics','olsat_reports'])?'rotate-180':'' ?>"></i>
+                <i id="reports-chevron" class="fas fa-chevron-down text-xs transition-transform <?= in_array($page,['counseling_reports','ses_analytics','olsat_reports','passed_examinees_report'])?'rotate-180':'' ?>"></i>
             </button>
-            <div id="reports-submenu" class="<?= in_array($page,['counseling_reports','ses_analytics','olsat_reports'])?'':'hidden' ?> pl-8 mt-1 space-y-1">
+            <div id="reports-submenu" class="<?= in_array($page,['counseling_reports','ses_analytics','olsat_reports','passed_examinees_report'])?'':'hidden' ?> pl-8 mt-1 space-y-1">
                 <a href="layout.php?page=counseling_reports" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='counseling_reports'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
                     <i class="fas fa-calendar-alt w-4 text-center"></i><span>Counseling Reports</span></a>
                 <a href="layout.php?page=ses_analytics" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='ses_analytics'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
                     <i class="fas fa-chart-line w-4 text-center"></i><span>SES Analytics</span></a>
                 <a href="layout.php?page=olsat_reports" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='olsat_reports'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
                     <i class="fas fa-clipboard-list w-4 text-center"></i><span>OLSAT Exam Reports</span></a>
+                <a href="layout.php?page=passed_examinees_report" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='passed_examinees_report'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
+                    <i class="fas fa-clipboard-check w-4 text-center"></i><span>Passed Examinees</span></a>
             </div>
         </div>
         <?php if ($role === 'admin'): ?>

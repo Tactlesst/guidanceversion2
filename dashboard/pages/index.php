@@ -71,6 +71,37 @@ if (in_array($role, ['super_admin','admin','guidance_advocate'])) {
 
         $grade_stats = $db->query("SELECT sp.grade_level, COUNT(*) as cnt FROM student_profiles sp JOIN users u ON sp.user_id=u.id WHERE u.role='student' AND (u.archived=0 OR u.archived IS NULL) GROUP BY sp.grade_level ORDER BY sp.grade_level")->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) { $grade_stats = []; }
+    
+    // Fetch today's schedules for schedule summary
+    $today_schedules = [];
+    try {
+        $schedule_stmt = $db->prepare("
+            SELECT s.*, u.first_name, u.last_name, u.email 
+            FROM schedules s 
+            LEFT JOIN users u ON s.created_by = u.id 
+            WHERE DATE(s.start_datetime) = CURDATE() 
+            AND s.is_active = 1
+            ORDER BY s.start_datetime ASC
+        ");
+        $schedule_stmt->execute();
+        $today_schedules = $schedule_stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Debug: log if no results found
+        if (empty($today_schedules)) {
+            error_log("No schedules found for today. Checking database...");
+            $debug_stmt = $db->query("SELECT COUNT(*) as total FROM schedules WHERE DATE(start_datetime) = CURDATE() AND is_active = 1");
+            $debug_result = $debug_stmt->fetch(PDO::FETCH_ASSOC);
+            error_log("Total schedules for today: " . $debug_result['total']);
+            
+            $debug_all = $db->query("SELECT id, title, event_type, start_datetime, end_datetime, is_active FROM schedules ORDER BY start_datetime DESC LIMIT 5");
+            $debug_all_result = $debug_all->fetchAll(PDO::FETCH_ASSOC);
+            error_log("Recent schedules: " . json_encode($debug_all_result));
+        }
+    } catch (Exception $e) { 
+        error_log("Error fetching schedules: " . $e->getMessage());
+        $today_schedules = []; 
+    }
+    
     $recent = [];
     try {
         $act_stmt = $db->query("(SELECT u.first_name, u.last_name, u.created_at, 'registration' as type, u.role as extra FROM users u WHERE u.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND u.role IN ('student','examinee') ORDER BY u.created_at DESC LIMIT 5) UNION ALL (SELECT u.first_name, u.last_name, ca.created_at, 'counseling' as type, ca.status as extra FROM counseling_appointments ca JOIN users u ON ca.user_id=u.id WHERE ca.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) ORDER BY ca.created_at DESC LIMIT 5) UNION ALL (SELECT u.first_name, u.last_name, ea.created_at, 'exam' as type, ea.status as extra FROM entrance_exam_appointments ea JOIN users u ON ea.user_id=u.id WHERE ea.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) ORDER BY ea.created_at DESC LIMIT 5) ORDER BY created_at DESC LIMIT 8");
@@ -96,6 +127,16 @@ if (in_array($role, ['student','examinee'])) {
         $ps->execute([$uid]);
         $pds_status = $ps->fetchColumn() ? 'completed' : 'pending';
     } catch (Exception $e) { $pds_status = 'pending'; }
+}
+
+// Check if user has active counseling appointment
+$has_active_appointment = false;
+if ($role === 'student') {
+    try {
+        $appt_stmt = $db->prepare("SELECT id FROM counseling_appointments WHERE user_id = ? AND status IN ('pending', 'confirmed', 'in_progress') AND appointment_date >= CURDATE() LIMIT 1");
+        $appt_stmt->execute([$uid]);
+        $has_active_appointment = $appt_stmt->fetchColumn() !== false;
+    } catch (Exception $e) { $has_active_appointment = false; }
 }
 ?>
 
@@ -278,6 +319,88 @@ if (in_array($role, ['student','examinee'])) {
             <?php endif; ?>
         </div>
     </div>
+    <?php if($role !== 'super_admin'): ?>
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-gray-700">
+                <i class="fas fa-calendar-day text-primary"></i>
+                <div class="font-semibold">Today's Schedule</div>
+            </div>
+            <div class="flex items-center gap-3">
+                <div class="text-xs text-gray-500"><?= date('l, F j, Y') ?></div>
+                <a href="layout.php?page=schedules" class="text-xs text-primary hover:text-primary-dark font-medium">View All</a>
+            </div>
+        </div>
+        <div class="p-5">
+            <?php if(empty($today_schedules)): ?>
+                <div class="text-center py-8">
+                    <div class="w-14 h-14 rounded-2xl bg-gray-50 mx-auto flex items-center justify-center text-gray-300 mb-3">
+                        <i class="fas fa-calendar-check text-2xl"></i>
+                    </div>
+                    <div class="text-sm text-gray-500">No scheduled activities for today</div>
+                    <div class="text-xs text-gray-400 mt-1">Events will appear here when scheduled</div>
+                </div>
+            <?php else: ?>
+                <div class="space-y-3">
+                    <?php 
+                    $event_colors = [
+                        'pds_period' => 'bg-purple-50 border-purple-200 text-purple-700',
+                        'entrance_exam' => 'bg-cyan-50 border-cyan-200 text-cyan-700',
+                        'counseling' => 'bg-blue-50 border-blue-200 text-blue-700',
+                        'event' => 'bg-green-50 border-green-200 text-green-700',
+                        'holiday' => 'bg-red-50 border-red-200 text-red-700'
+                    ];
+                    $event_icons = [
+                        'pds_period' => 'fa-file-alt',
+                        'entrance_exam' => 'fa-clipboard-list',
+                        'counseling' => 'fa-comments',
+                        'event' => 'fa-calendar',
+                        'holiday' => 'fa-umbrella-beach'
+                    ];
+                    $event_labels = [
+                        'pds_period' => 'PDS Period',
+                        'entrance_exam' => 'Entrance Exam',
+                        'counseling' => 'Counseling',
+                        'event' => 'Event',
+                        'holiday' => 'Holiday'
+                    ];
+                    ?>
+                    <?php foreach($today_schedules as $schedule): 
+                        $event_type = $schedule['event_type'] ?? 'event';
+                        $color_class = $event_colors[$event_type] ?? $event_colors['event'];
+                        $icon = $event_icons[$event_type] ?? $event_icons['event'];
+                        $label = $event_labels[$event_type] ?? 'Event';
+                        $start_time = date('g:i A', strtotime($schedule['start_datetime']));
+                        $end_time = date('g:i A', strtotime($schedule['end_datetime']));
+                    ?>
+                        <div class="flex items-start gap-3 p-4 rounded-xl <?= $color_class ?> border hover:shadow-md transition-shadow cursor-pointer" onclick="window.location.href='layout.php?page=schedules&view_schedule=<?= $schedule['id'] ?>'">
+                            <div class="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0">
+                                <i class="fas <?= $icon ?> text-lg"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <div class="text-sm font-semibold text-gray-800 truncate"><?= htmlspecialchars($schedule['title']) ?></div>
+                                    <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-white/60 flex-shrink-0">
+                                        <?= $label ?>
+                                    </span>
+                                </div>
+                                <div class="flex items-center gap-2 text-xs text-gray-600 mb-1">
+                                    <i class="fas fa-clock"></i>
+                                    <span><?= $start_time ?> - <?= $end_time ?></span>
+                                </div>
+                                <?php if($schedule['description']): ?>
+                                    <div class="text-xs text-gray-600 line-clamp-2 leading-relaxed">
+                                        <?= htmlspecialchars($schedule['description']) ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <?php if($role === 'super_admin'): ?>
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -625,6 +748,22 @@ if (in_array($role, ['student','examinee'])) {
                 <span>Counseling Services</span>
             </div>
             <p class="text-sm text-gray-500">Schedule counseling sessions with our guidance counselors.</p>
+            
+            <?php if($has_active_appointment): ?>
+            <div class="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 flex-shrink-0">
+                    <i class="fas fa-exclamation-triangle text-sm"></i>
+                </div>
+                <div class="flex-1">
+                    <p class="font-semibold text-amber-800 text-sm">You have an active appointment</p>
+                    <p class="text-xs text-amber-700">Please complete or cancel before booking a new one.</p>
+                </div>
+                <a href="layout.php?page=view_appointments" class="text-xs text-amber-700 font-semibold hover:underline">
+                    View
+                </a>
+            </div>
+            <?php endif; ?>
+            
             <div class="mt-4 flex flex-wrap gap-2">
                 <a href="layout.php?page=book_appointment" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-dark transition-colors shadow-sm">
                     <i class="fas fa-calendar-plus"></i>

@@ -38,13 +38,13 @@ if ($_POST) {
             
             if ($return_code === 0 && file_exists($backup_file)) {
                 $_SESSION['success_message'] = "Backup created successfully: " . basename($backup_file);
-                logAdminAction('create_backup', "Created database backup: " . basename($backup_file), null, $conn);
+                logAdminAction('create_backup', "Created backup: " . basename($backup_file), null, $conn);
             } else {
                 // Fallback to PHP-based backup if mysqldump fails
                 $backup_file = createPHPBackup($conn, $backup_dir);
                 if ($backup_file) {
                     $_SESSION['success_message'] = "Backup created successfully: " . basename($backup_file);
-                    logAdminAction('create_backup', "Created database backup (PHP fallback): " . basename($backup_file), null, $conn);
+                    logAdminAction('create_backup', "Created backup: " . basename($backup_file), null, $conn);
                 } else {
                     $_SESSION['error_message'] = "Failed to create backup. Please check server permissions.";
                 }
@@ -101,7 +101,7 @@ if ($_POST) {
             
             $conn->commit();
             $_SESSION['success_message'] = "Database restored successfully!";
-            logAdminAction('restore_backup', "Restored database from backup: " . $_FILES['backup_file']['name'], null, $conn);
+            logAdminAction('restore_backup', "Restored: " . $_FILES['backup_file']['name'], null, $conn);
         } catch (Exception $e) {
             $_SESSION['error_message'] = "Restore failed: " . $e->getMessage();
         }
