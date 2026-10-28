@@ -1,4 +1,6 @@
 <?php
+if($_SERVER['REQUEST_METHOD']==='POST'){require __DIR__.'/../includes/heartbeat_control.php';exit;}
+
 /**
  * Admin: Mark Missed Appointments
  * 

@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__.'/pds_editor_schema.php';
+require_once __DIR__.'/../classes/SubmissionNotifications.php';require_once __DIR__.'/pds_history.php';require_once __DIR__.'/pds_editor_schema.php';require_once __DIR__.'/pds_address.php';require_once __DIR__.'/pds_drawn_signature.php';
 final class PDSEditorStore {
     private PDO $db;private string $uploads;private array $created=[];
     public function __construct(PDO $db,?string $uploads=null){$this->db=$db;$this->uploads=$uploads??dirname(__DIR__).'/uploads';}
@@ -35,8 +35,18 @@ final class PDSEditorStore {
         try {
             $before=$this->load($uid,true);
             if(!hash_equals(self::revision($before),$expectedRevision))throw new RuntimeException('This PDS changed after you opened it. Reload the form before saving so existing changes are kept.');
+            $history=new PDSHistory($this->db);
+            if(array_key_exists('school_year',$post))$post['school_year']=self::scalar($post['school_year'],'school year');
+            if($before['pds']&&array_key_exists('school_year',$post)&&$post['school_year']!==(string)($before['pds']['school_year']??''))throw new RuntimeException('Use School years & history to start a new school year. This preserves the previous record and requires fresh consent and signatures.');
+            if(!empty($post['school_year']))PDSHistory::year($post['school_year']);
+            $history->baseline($uid,$before);$priorVersion=$history->latest($uid);
+            $post=PDSAddress::apply($post);
+            if(isset($post['languages_spoken'])&&is_array($post['languages_spoken'])){
+                $languages=[];foreach($post['languages_spoken'] as $token){$token=self::scalar($token,'language');if($token==='Others'&&trim(self::scalar($post['languages_spoken_other']??'','other language'))!=='')$token='Others: '.trim($post['languages_spoken_other']);if($token!=='')$languages[]=$token;}$post['languages_spoken']=$languages;
+            }
             $columns=[];foreach($this->db->query('SHOW COLUMNS FROM pds')->fetchAll(PDO::FETCH_ASSOC) as $column)$columns[$column['Field']]=$column['Type'];
             foreach(['father','mother'] as $parent)if(($post[$parent.'_education']??'')==='Others'&&trim(self::scalar($post[$parent.'_education_other']??'','other education'))!=='')$post[$parent.'_education']='Others: '.trim($post[$parent.'_education_other']);
+            if(($post['religion']??'')==='Others'&&trim(self::scalar($post['religion_other']??'','other religion'))!=='')$post['religion']='Others: '.trim($post['religion_other']);
             $values=['education_level'=>$education];
             foreach(explode(' ',PDSEditorSchema::FIELDS) as $field){
                 if(!array_key_exists($field,$post))continue;
@@ -56,14 +66,26 @@ final class PDSEditorStore {
                 $values['privacy_agreement']=($values['privacy_agreement']??0)===1?1:0;
                 $values['privacy_agreement_date']=$values['privacy_agreement']?((($before['pds']['privacy_agreement']??0)==1&& !empty($before['pds']['privacy_agreement_date']))?$before['pds']['privacy_agreement_date']:date('Y-m-d H:i:s')):null;
             }
+            foreach(['student_signature','parent_signature'] as $field){
+                $drawn=self::scalar($post[$field.'_drawn']??'','signature drawing');$hasUpload=isset($files[$field])&&($files[$field]['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_NO_FILE;
+                if(($drawn!==''||$hasUpload)&&($post[$field.'_confirm']??'')!=='1')throw new InvalidArgumentException('The signer must explicitly authorize the new signature before it can be applied.');
+                if($drawn!==''&&$hasUpload)throw new InvalidArgumentException('Choose either a drawn signature or an uploaded signature, not both.');
+                if($drawn!=='')$values[$field]=PDSDrawnSignature::save($drawn,$this->uploads,$uid,function($path){$this->created[]=$path;});
+                if($drawn!==''||$hasUpload){$prefix=$field==='student_signature'?'student':'parent';$values[$prefix.'_date_signed']=(new DateTimeImmutable('now',new DateTimeZone('Asia/Manila')))->format('Y-m-d');}
+            }
             foreach(['student_photo'=>'photo','student_signature'=>'student signature','parent_signature'=>'parent signature'] as $field=>$kind){
-                if(!empty($post['remove_'.$field]))$values[$field]=null;
+                if(!empty($post['remove_'.$field])&&empty($post[$field.'_drawn']))$values[$field]=null;
                 if(isset($files[$field])&&($files[$field]['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_NO_FILE)$values[$field]=$this->upload($files[$field],$kind,$uid);
             }
             if($before['pds']){$set=implode(',',array_map(static fn($field)=>"`$field`=?",array_keys($values)));$statement=$this->db->prepare("UPDATE pds SET $set WHERE user_id=?");$statement->execute([...array_values($values),$uid]);}
             else {$values['user_id']=$uid;$fields=implode(',',array_map(static fn($field)=>"`$field`",array_keys($values)));$marks=implode(',',array_fill(0,count($values),'?'));$this->db->prepare("INSERT INTO pds ($fields) VALUES ($marks)")->execute(array_values($values));}
             foreach(PDSEditorSchema::RELATED as $group=>$definition)if(array_key_exists($group,$post)||array_key_exists('removed_'.$group,$post))$this->saveRelated($uid,$group,$definition,$post,$before[$group]);
             $after=$this->load($uid);
+            $annualReview=($post['_pds_finalize']??'')==='1';
+            if($annualReview)PDSHistory::validateAnnualReview($after);
+            $version=$history->record($uid,$after,$annualReview?'annual_review':($before['pds']?'updated':'created'),$uid,$annualReview&&!$history->reviewComplete($uid,(string)$after['pds']['school_year']));
+            if((int)($priorVersion['id']??0)!==(int)$version['id'])SubmissionNotifications::pds($this->db,$uid,(int)$version['id'],(string)($after['pds']['school_year']??''),$annualReview);
+            if($annualReview)$history->reviewed($uid,(string)$after['pds']['school_year']);
             if($owned)$this->db->commit();else $this->db->exec('RELEASE SAVEPOINT pds_editor_save');return $after;
         }catch(Throwable $error){
             if($owned&&$this->db->inTransaction())$this->db->rollBack();elseif(!$owned)$this->db->exec('ROLLBACK TO SAVEPOINT pds_editor_save');

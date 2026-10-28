@@ -1,12 +1,12 @@
 <?php
-require_once __DIR__.'/SchoolClosure.php';
+require_once __DIR__.'/SchoolClosure.php';require_once __DIR__.'/SystemSettings.php';require_once __DIR__.'/SubmissionNotifications.php';
 /** One source of availability rules for the calendar and booking submission. */
 class ExamBooking {
     private $db;
     public function __construct($db) { $this->db = $db; }
     public function slots($date) {
         $day = DateTimeImmutable::createFromFormat('!Y-m-d', (string)$date);
-        if (!$day || $day->format('Y-m-d') !== $date || $date < date('Y-m-d') || $day->format('w') === '0') return [];
+        if (!$day || $day->format('Y-m-d') !== $date || $date <= date('Y-m-d') || $day->format('w') === '0') return [];
         if((new SchoolClosure($this->db))->forDate($date))return [];
         $q=$this->db->prepare('SELECT 1 FROM holidays WHERE date=?'); $q->execute([$date]);
         if ($q->fetchColumn()) return [];
@@ -35,7 +35,7 @@ class ExamBooking {
             $q=$this->db->prepare("SELECT COUNT(*) FROM counseling_appointments WHERE appointment_date=? AND status IN ('pending','confirmed','in_progress','rescheduled','follow_up_scheduled') AND TIMESTAMP(appointment_date,appointment_time) < ? AND DATE_ADD(TIMESTAMP(appointment_date,appointment_time),INTERVAL COALESCE(session_duration,60) MINUTE)>?");
             $q->execute([$date,date('Y-m-d H:i:s',$ts+7200),date('Y-m-d H:i:s',$ts)]);
             if ($q->fetchColumn()) continue;
-            $slots[]=['value'=>date('H:i:s',$ts),'label'=>date('g:i A',$ts),'remaining'=>$remaining];
+            $slots[]=['value'=>date('H:i:s',$ts),'label'=>date('g:i A',$ts),'remaining'=>$remaining,'end_at'=>date('Y-m-d H:i:s',$ts+7200)];
         }
         return $slots;
     }
@@ -45,6 +45,7 @@ class ExamBooking {
         if (!$locked) throw new RuntimeException('Booking is busy. Please try again.');
         try {
             $this->db->beginTransaction();
+            if(!(new SystemSettings($this->db))->isEntranceExamEnabled())throw new RuntimeException('Entrance exam booking is currently closed.');
             $q=$this->db->prepare("SELECT id FROM entrance_exam_appointments WHERE user_id=? AND status IN ('pending','confirmed','awaiting_results','completed') FOR UPDATE"); $q->execute([$userId]);
             if ($q->fetchColumn()) throw new RuntimeException('You already have an active or completed entrance exam.');
             $q=$this->db->prepare("SELECT grade_level_applying FROM users WHERE id=? AND role='examinee' AND is_active=1 AND COALESCE(archived,0)=0"); $q->execute([$userId]);$grade=$q->fetchColumn();
@@ -53,9 +54,9 @@ class ExamBooking {
             if ($program!==null && strlen($program)>100) throw new RuntimeException('Preferred program must be at most 100 characters.');
             $slots=$this->slots($date);
             if (!in_array($time,array_column($slots,'value'),true)) throw new RuntimeException('This exam slot is unavailable. Choose a staff-configured date and time.');
-            $q=$this->db->prepare("INSERT INTO entrance_exam_appointments(user_id,preferred_date,preferred_time,grade_level_applying,previous_school,preferred_program,status,confirmed_at) VALUES(?,?,?,?,?,?,'confirmed',NOW())");
-            $q->execute([$userId,$date,$time,$grade,trim($school),$program]); $id=$this->db->lastInsertId();
-            $this->db->commit(); return $id;
+            $q=$this->db->prepare("INSERT INTO entrance_exam_appointments(user_id,preferred_date,preferred_time,grade_level_applying,previous_school,preferred_program,slot_end_at,status,confirmed_at) VALUES(?,?,?,?,?,?,?,'confirmed',NOW())");
+            $selected=array_values(array_filter($slots,static fn($slot)=>$slot['value']===$time))[0];$q->execute([$userId,$date,$time,$grade,trim($school),$program,$selected['end_at']]); $id=$this->db->lastInsertId();
+            SubmissionNotifications::appointment($this->db,'exam',(int)$id);$this->db->commit(); return $id;
         } catch (Throwable $e) { if ($this->db->inTransaction()) $this->db->rollBack(); throw $e; }
         finally { $this->db->query("SELECT RELEASE_LOCK('guidanceversion2_exam_booking')"); }
     }

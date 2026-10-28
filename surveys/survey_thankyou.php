@@ -8,8 +8,12 @@ if (!defined('IN_LAYOUT')) {
     exit();
 }
 
+require_once __DIR__.'/../includes/survey_assignment.php';require_once __DIR__.'/../includes/survey_annual.php';
+$assignmentQuery=$db->prepare('SELECT department,grade_level FROM student_profiles WHERE user_id=?');$assignmentQuery->execute([(int)$uid]);$assignedSurvey=studentSurveyAssignment($assignmentQuery->fetch(PDO::FETCH_ASSOC)?:[]);
+if(($role??'')!=='student'||($assignedSurvey['kind']??'')!=='mi'){if($assignedSurvey&&($role??'')==='student'){header('Location: layout.php?page='.$assignedSurvey['results']);exit;}http_response_code(403);echo '<p>No survey is assigned to this education level.</p>';return;}
 $user_id = $uid;
-$student_id = $_SESSION['student_id'] ?? null;
+$studentQuery=$db->prepare('SELECT student_id FROM student_profiles WHERE user_id=?');$studentQuery->execute([(int)$uid]);
+$student_id=$studentQuery->fetchColumn()?:null;
 
 if (!$student_id) {
     echo '<div class="alert alert-danger">Student ID not found.</div>';
@@ -17,9 +21,9 @@ if (!$student_id) {
 }
 
 // Get student's survey results
-$stmt = $db->prepare("SELECT * FROM multiple_intelligence_survey WHERE student_id = ?");
-$stmt->execute([$student_id]);
-$survey_results = $stmt->fetch();
+$surveyYear=SurveyAnnual::year($db,(int)$uid);$survey_results=$surveyYear!==''?SurveyAnnual::record($db,(int)$uid,'mi',$surveyYear):null;
+echo SurveyAnnual::notice($surveyYear);
+if(!$survey_results){echo '<p>No survey has been submitted for your current PDS school year.</p><a href="layout.php?page=multiple_intelligence_survey">Open this year’s survey</a>';return;}
 
 // Define intelligence types with descriptions and icons
 $intelligence_types = [
@@ -1113,7 +1117,7 @@ if ($survey_results) {
                             <a href="../dashboard/" class="btn-modern btn-primary-modern">
                                 <i class="fas fa-tachometer-alt me-2"></i>Back to Dashboard
                             </a>
-                            <a href="multiple_intelligence_survey.php?update=1" class="btn-modern btn-secondary-modern">
+                            <a href="layout.php?page=multiple_intelligence_survey&amp;update=1" class="btn-modern btn-secondary-modern">
                                 <i class="fas fa-edit me-2"></i>Update Survey
                             </a>
                         </div>

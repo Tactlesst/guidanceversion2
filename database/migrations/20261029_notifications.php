@@ -1,0 +1,7 @@
+<?php
+if(PHP_SAPI!=='cli'){http_response_code(404);exit;}
+require_once __DIR__.'/../../config/database.php';$db=(new Database)->getConnection();
+$columns=array_column($db->query('SHOW COLUMNS FROM notifications')->fetchAll(PDO::FETCH_ASSOC),'Field');if(!in_array('dedupe_key',$columns,true))$db->exec('ALTER TABLE notifications ADD COLUMN dedupe_key VARCHAR(191) NULL');
+$keys=array_column($db->query('SHOW INDEX FROM notifications')->fetchAll(PDO::FETCH_ASSOC),'Key_name');if(!in_array('notification_event_recipient',$keys,true))$db->exec('ALTER TABLE notifications ADD UNIQUE KEY notification_event_recipient(user_id,dedupe_key)');
+$db->exec("CREATE TABLE IF NOT EXISTS email_outbox(id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,user_id INT NULL,notification_id INT NULL,to_email VARCHAR(255) NOT NULL,subject VARCHAR(255) NOT NULL,body_html MEDIUMTEXT NOT NULL,status ENUM('pending','processing','sent','failed') NOT NULL DEFAULT 'pending',dedupe_key VARCHAR(191) NULL,send_after DATETIME NULL,attempts SMALLINT UNSIGNED NOT NULL DEFAULT 0,last_error VARCHAR(500) NULL,lease_token CHAR(32) NULL,lease_until DATETIME NULL,created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,sent_at DATETIME NULL,UNIQUE KEY uq_outbox_dedupe(dedupe_key),KEY email_due(status,send_after,id),KEY email_owner(user_id,id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+echo "Notification deduplication and email queue ready. Existing notifications retained.\n";

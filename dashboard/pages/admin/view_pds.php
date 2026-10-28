@@ -1,4 +1,5 @@
 <?php
+if(!defined('IN_LAYOUT')){http_response_code(403);exit;}
 require_once __DIR__ . '/../../../classes/PersonalDataSheet.php';
 
 $pds = new PersonalDataSheet($db);
@@ -321,7 +322,7 @@ async function viewPDS(id) {
         if(!response.ok)throw new Error(response.status===403?'You do not have permission to view this personal data sheet.':'The personal data sheet could not be opened.');
         const html=await response.text();const previous=document.getElementById('pdsRecordDialog');if(previous){window.PDSPaper.dispose(previous.querySelector('[data-pds-document]'));window.PortalDialogs.close(previous);previous.remove();}
         const modal=document.createElement('div');modal.id='pdsRecordDialog';modal.className='pd-overlay';modal.setAttribute('data-portal-dialog','');modal.setAttribute('data-managed-dialog','');modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');modal.setAttribute('aria-labelledby','pdsRecordTitle');
-        modal.innerHTML=`<div class="pd-card pd-card-wide pds-paper-modal"><div class="pd-header"><div class="pd-heading-copy"><h2 id="pdsRecordTitle">Personal data sheet</h2><p>Paper form preview · View and print the same document.</p></div><button type="button" class="pd-button" onclick="printPDS(${Number(id)})">Print</button><button type="button" class="pd-close" aria-label="Close personal data sheet" onclick="window.PDSPaper.dispose(this.closest('[data-portal-dialog]').querySelector('[data-pds-document]'));window.PortalDialogs.close(this.closest('[data-portal-dialog]'));this.closest('[data-portal-dialog]').remove()">×</button></div><div class="pd-body pds-paper-modal-body"><div class="pds-document-toolbar"><label>Paper <select data-pds-paper-select aria-label="PDS paper size"><option value="long">Long bond (8.5 × 13 in)</option><option value="a4">A4</option><option value="letter">Letter</option></select></label><button type="button" data-pds-zoom="fit" aria-pressed="true">Fit width</button><button type="button" data-pds-zoom="actual" aria-pressed="false">Actual size</button><span>Missing information stays blank.</span></div><p class="pds-paper-status" data-pds-status role="status"></p><div class="pds-document-viewport">${html}</div></div></div>`;
+        modal.innerHTML=`<div class="pd-card pd-card-wide pds-paper-modal"><div class="pd-header"><div class="pd-heading-copy"><h2 id="pdsRecordTitle">Personal data sheet</h2><p>Paper form preview · View and print the same document.</p></div><a class="pd-button" href="layout.php?page=pds_history&amp;pds_id=${Number(id)}">School years &amp; history</a><button type="button" class="pd-button" onclick="printPDS(${Number(id)})">Print</button><button type="button" class="pd-close" aria-label="Close personal data sheet" onclick="window.PDSPaper.dispose(this.closest('[data-portal-dialog]').querySelector('[data-pds-document]'));window.PortalDialogs.close(this.closest('[data-portal-dialog]'));this.closest('[data-portal-dialog]').remove()">×</button></div><div class="pd-body pds-paper-modal-body"><div class="pds-document-toolbar"><label>Paper <select data-pds-paper-select aria-label="PDS paper size"><option value="long">Long bond (8.5 × 13 in)</option><option value="a4">A4</option><option value="letter">Letter</option></select></label><button type="button" data-pds-zoom="fit" aria-pressed="true">Fit width</button><button type="button" data-pds-zoom="actual" aria-pressed="false">Actual size</button><span>Missing information stays blank.</span></div><p class="pds-paper-status" data-pds-status role="status"></p><div class="pds-document-viewport">${html}</div></div></div>`;
         document.body.appendChild(modal);window.PortalDialogs.open(modal);modal.querySelector('.pd-close').focus({preventScroll:true});
         await window.PDSPaper.mount(modal.querySelector('[data-pds-document]'),modal);
         return modal;
@@ -329,7 +330,7 @@ async function viewPDS(id) {
 }
 async function printPDS(id) {
     let modal=document.getElementById('pdsRecordDialog');if(!modal||modal.querySelector('[data-pds-document]')?.dataset.pdsId!==String(id))modal=await viewPDS(id);
-    if(!modal)return;try{await window.PDSPaper.print(modal.querySelector('[data-pds-document]'));}catch(error){officeAlert('Print personal data sheet',error.message,'error');}
+    if(!modal)return;try{await window.OfficeApprovals.authorize('pds',{id:Number(id),paper:modal.querySelector('[data-pds-paper-select]')?.value||'long'});await window.PDSPaper.print(modal.querySelector('[data-pds-document]'));}catch(error){officeAlert('Print personal data sheet',error.message,'error');}
 }
 
 
@@ -361,3 +362,5 @@ function changePage(delta) { currentPage += delta; fetchPDSRecords(); }
 // Initial load
 fetchPDSRecords();
 </script>
+
+<?php if(!empty($_GET['open_pds'])&&filter_var($_GET['open_pds'],FILTER_VALIDATE_INT)):?><script>viewPDS(<?=(int)$_GET['open_pds']?>);</script><?php endif;?>

@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__.'/EmailIdentity.php';
 class User {
     private $conn;
     private $table_name = "users";
@@ -9,10 +10,11 @@ class User {
     public function __construct($db) { $this->conn = $db; }
 
     public function login($identifier, $password) {
+        $identifier=trim((string)$identifier);
         $query = "SELECT u.id, u.password, u.email, u.role, u.first_name, u.last_name, u.is_active, sp.student_id
                   FROM {$this->table_name} u
                   LEFT JOIN student_profiles sp ON u.id = sp.user_id
-                  WHERE (u.email = ? OR sp.student_id = ?) AND u.is_active = 1 AND (u.archived = 0 OR u.archived IS NULL)";
+                  WHERE (LOWER(TRIM(u.email)) = LOWER(?) OR sp.student_id = ?) AND u.is_active = 1 AND (u.archived = 0 OR u.archived IS NULL)";
         $stmt = $this->conn->prepare($query);
         $stmt->execute([$identifier, $identifier]);
 
@@ -29,8 +31,9 @@ class User {
     }
 
     public function register() {
+        $this->email=EmailIdentity::normalize((string)$this->email,$this->role!=='student');
         if (!empty($this->email)) {
-            $check = $this->conn->prepare("SELECT id FROM {$this->table_name} WHERE email = ?");
+            $check = $this->conn->prepare("SELECT id FROM {$this->table_name} WHERE LOWER(TRIM(email)) = ?");
             $check->execute([$this->email]);
             if ($check->rowCount() > 0) throw new Exception("Email already exists.");
         }
@@ -43,7 +46,7 @@ class User {
         $stmt = $this->conn->prepare($query);
 
         $this->password = password_hash($this->password, PASSWORD_DEFAULT);
-        $this->email = empty($this->email) ? null : htmlspecialchars(strip_tags($this->email));
+        $this->email = $this->email ?: null;
         $this->role = htmlspecialchars(strip_tags($this->role));
         $this->first_name = htmlspecialchars(strip_tags($this->first_name));
         $this->middle_name = empty($this->middle_name) ? null : htmlspecialchars(strip_tags($this->middle_name));
@@ -60,7 +63,7 @@ class User {
         $stmt->bindParam(":grade_level_applying", $this->grade_level_applying);
         $stmt->bindParam(":examinee_type", $this->examinee_type);
 
-        return $stmt->execute();
+        try{return $stmt->execute();}catch(PDOException $e){if(($e->errorInfo[1]??0)===1062)throw new InvalidArgumentException('This email address is already registered. Use your existing account or recover its password.');throw $e;}
     }
 
     public function getUserById($id) {
@@ -95,8 +98,10 @@ class User {
     }
 
     public function updateUserComplete() {
+        $this->email=EmailIdentity::normalize((string)$this->email,$this->role!=='student');
+        $previous=$this->conn->prepare('SELECT role FROM users WHERE id=?');$previous->execute([$this->id]);if($previous->fetchColumn()==='examinee'&&$this->role==='student')throw new RuntimeException('Use Convert examinee to student so the account and academic placement are preserved.');
         if (!empty($this->email)) {
-            $check = $this->conn->prepare("SELECT id FROM {$this->table_name} WHERE email = ? AND id != ?");
+            $check = $this->conn->prepare("SELECT id FROM {$this->table_name} WHERE LOWER(TRIM(email)) = ? AND id != ?");
             $check->execute([$this->email, $this->id]);
             if ($check->rowCount() > 0) throw new Exception("Email already exists.");
         }
@@ -110,7 +115,7 @@ class User {
         $stmt = $this->conn->prepare($query);
         $this->first_name = htmlspecialchars(strip_tags($this->first_name));
         $this->last_name = htmlspecialchars(strip_tags($this->last_name));
-        $this->email = empty($this->email) ? null : htmlspecialchars(strip_tags($this->email));
+        $this->email = $this->email ?: null;
         $this->role = htmlspecialchars(strip_tags($this->role));
 
         $stmt->bindParam(":first_name", $this->first_name);
@@ -139,7 +144,7 @@ class User {
     }
 
     public function resetPassword($id, $new_password) {
-        $stmt = $this->conn->prepare("UPDATE {$this->table_name} SET password = ? WHERE id = ?");
+        $stmt = $this->conn->prepare("UPDATE {$this->table_name} SET password = ?,auth_version=auth_version+1,reset_token=NULL,reset_token_expires=NULL WHERE id = ?");
         return $stmt->execute([password_hash($new_password, PASSWORD_DEFAULT), $id]);
     }
 

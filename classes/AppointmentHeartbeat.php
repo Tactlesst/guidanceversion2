@@ -1,370 +1,47 @@
 <?php
-/**
- * AppointmentHeartbeat Class
- * 
- * Handles automatic status updates for appointments based on dates.
- * Can be called from cron jobs, web requests, or directly from application code.
- * 
- * @version 2.0 - Optimized for guidanceversion2
- */
-
-require_once __DIR__ . '/NotificationService.php';
-
+require_once __DIR__.'/NotificationService.php';
+/** Deadline checks never infer attendance, results, cancellation or completion. */
 class AppointmentHeartbeat {
-    private $db;
-    private $log_enabled = true;
-    private $log_file = null;
-    private $notificationService = null;
-    
-    public function __construct($database_connection) {
-        $this->db = $database_connection;
-        
-        // Set log file path
-        $this->log_file = dirname(__DIR__) . '/logs/appointment_heartbeat.log';
- 
-        // Ensure logs directory exists
-        $log_dir = dirname($this->log_file);
-        if (!file_exists($log_dir)) {
-            mkdir($log_dir, 0755, true);
-        }
- 
-        // Initialize notification service
-        $this->notificationService = new NotificationService($database_connection);
+ private PDO $db;private bool $logging=true;private $clock;
+ public function __construct(PDO $db,?callable $clock=null){$this->db=$db;$this->clock=$clock??static fn()=>new DateTimeImmutable('now',new DateTimeZone('Asia/Manila'));}
+ public function setLogging($enabled=true):void{$this->logging=(bool)$enabled;}
+ private static function date(?string $date):?DateTimeImmutable {if(!$date)return null;$d=DateTimeImmutable::createFromFormat('!Y-m-d',$date,new DateTimeZone('Asia/Manila'));return $d&&$d->format('Y-m-d')===$date?$d:null;}
+ public function examDeadline(array $row):?DateTimeImmutable {
+  if(!empty($row['slot_end_at'])){$d=DateTimeImmutable::createFromFormat('!Y-m-d H:i:s',$row['slot_end_at'],new DateTimeZone('Asia/Manila'));if($d&&$d->format('Y-m-d H:i:s')===$row['slot_end_at'])return $d;}
+  $day=self::date($row['preferred_date']??null);$time=$row['preferred_time']??null;if(!$day||!is_string($time)||!preg_match('/^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?$/D',$time))return null;
+  $start=new DateTimeImmutable($row['preferred_date'].' '.$time,new DateTimeZone('Asia/Manila'));$end=$start->modify('+2 hours');
+  $q=$this->db->prepare('SELECT exam_end_time FROM entrance_exam_daily_limits WHERE date=?');$q->execute([$row['preferred_date']]);$configured=$q->fetchColumn();
+  if(is_string($configured)&&preg_match('/^(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/D',$configured)){$limit=new DateTimeImmutable($row['preferred_date'].' '.$configured,new DateTimeZone('Asia/Manila'));if($limit>$start&&$limit<$end)$end=$limit;}
+  return $end;
+ }
+ private function due(string $kind,array $r,DateTimeImmutable $now):?DateTimeImmutable {
+  if(!in_array($r['status'],['pending','confirmed','rescheduled','follow_up_scheduled'],true))return null;
+  if($kind==='exam'){if($r['exam_date']||$r['total_score']!==null||$r['exam_score']!==null)return null;$deadline=$this->examDeadline($r);}
+  else{$day=self::date($r['appointment_date']??null);$deadline=$day?$day->modify('+1 day'):null;$q=$this->db->prepare('SELECT 1 FROM counseling_forms WHERE appointment_id=? LIMIT 1');$q->execute([$r['id']]);if($q->fetchColumn())return null;}
+  return $deadline&&$deadline<=$now?$deadline:null;
+ }
+ public function run(bool $dryRun=false):array {
+  $now=($this->clock)();$today=$now->format('Y-m-d');$result=['counseling_missed'=>0,'counseling_completed'=>0,'exam_missed'=>0,'exam_completed'=>0,'errors'=>[],'dry_run'=>$dryRun];
+  $lock='guidance_appointment_check_'.substr(hash('sha256',(string)$this->db->query('SELECT DATABASE()')->fetchColumn()),0,25);$q=$this->db->prepare('SELECT GET_LOCK(?,0)');$q->execute([$lock]);if(!(int)$q->fetchColumn())return $result;
+  try{
+   $started=$this->db->query("SELECT updated_at FROM system_settings WHERE setting_key='appointment_automation_started'")->fetchColumn();
+   foreach(['counseling'=>'counseling_appointments','exam'=>'entrance_exam_appointments'] as $kind=>$table){$date=$kind==='exam'?'preferred_date':'appointment_date';$q=$this->db->prepare("SELECT * FROM $table WHERE status IN ('pending','confirmed','rescheduled','follow_up_scheduled') AND $date<=? AND ".($kind==='exam'?"exam_date IS NULL AND total_score IS NULL AND exam_score IS NULL":"$date < ? AND NOT EXISTS(SELECT 1 FROM counseling_forms f WHERE f.appointment_id=$table.id)")." ORDER BY $date,".($kind==='exam'?'preferred_time,':'')."id");$q->execute($kind==='exam'?[$today]:[$today,$today]);$rows=$q->fetchAll(PDO::FETCH_ASSOC);
+    foreach($rows as $row){if(!$this->due($kind,$row,$now))continue;if($dryRun){$result[$kind==='exam'?'exam_missed':'counseling_missed']++;continue;}
+     try{$this->db->beginTransaction();$q=$this->db->prepare('SELECT * FROM '.$table.' WHERE id=? FOR UPDATE');$q->execute([$row['id']]);$current=$q->fetch(PDO::FETCH_ASSOC);if(!$current||!($deadline=$this->due($kind,$current,$now))){$this->db->commit();continue;}
+      $q=$this->db->prepare("UPDATE $table SET status='missed',updated_at=?".($kind==='exam'?',slot_end_at=COALESCE(slot_end_at,?)':'').' WHERE id=?');$q->execute($kind==='exam'?[$now->format('Y-m-d H:i:s'),$deadline->format('Y-m-d H:i:s'),$row['id']]:[$now->format('Y-m-d H:i:s'),$row['id']]);
+      $label=$kind==='exam'?'entrance exam':'counseling appointment';$scheduled=$kind==='exam'?$current['preferred_date']:$current['appointment_date'];$sendEmail=$started&&$deadline->format('Y-m-d H:i:s')>=$started;
+      if(!(new NotificationService($this->db))->notify((int)$current['user_id'],$kind==='exam'?'Entrance exam missed':'Counseling appointment missed','Your '.$label.' on '.date('M j, Y',strtotime($scheduled)).' was marked as missed because attendance was not recorded before its deadline. Open your appointments for the next available options.',$kind==='exam'?'exam_missed':'appointment_missed',$table,(int)$row['id'],(bool)$sendEmail,null,null,'automatic-missed:'.$table.':'.$row['id']))throw new RuntimeException('The missed appointment notice could not be saved.');
+      $this->db->commit();$result[$kind==='exam'?'exam_missed':'counseling_missed']++;
+     }catch(Throwable $e){if($this->db->inTransaction())$this->db->rollBack();$result['errors'][]='An appointment could not be checked. It will be retried.';}
     }
-    
-    /**
-     * Enable or disable logging
-     */
-    public function setLogging($enabled = true) {
-        $this->log_enabled = $enabled;
-    }
-    
-    /**
-     * Log a message
-     */
-    private function log($message) {
-        if (!$this->log_enabled) {
-            return;
-        }
-        
-        $timestamp = date('Y-m-d H:i:s');
-        $log_message = "[{$timestamp}] {$message}\n";
-        
-        // Try to write to file
-        if ($this->log_file && is_writable(dirname($this->log_file))) {
-            file_put_contents($this->log_file, $log_message, FILE_APPEND);
-        }
-        
-        // Also log to PHP error log
-        error_log($log_message);
-    }
-    
-    /**
-     * Run the complete heartbeat
-     * 
-     * @return array Results of the heartbeat execution
-     */
-    public function run() {
-        $this->log("=== Appointment Status Heartbeat Started ===");
-        
-        $results = [
-            'counseling_missed' => 0,
-            'counseling_completed' => 0,
-            'exam_missed' => 0,
-            'exam_completed' => 0,
-            'errors' => []
-        ];
-        
-        try {
-            $current_date = date('Y-m-d');
-            $current_time = date('H:i:s');
-            
-            // Update counseling appointments
-            $results['counseling_missed'] = $this->updateCounselingMissed($current_date);
-            $results['counseling_completed'] = $this->updateCounselingCompleted($current_date);
-            
-            // Update entrance exam appointments
-            $results['exam_missed'] = $this->updateExamMissed($current_date, $current_time);
-            $results['exam_completed'] = 0;
-            
-            $total = array_sum($results) - count($results['errors']);
-            $this->log("=== Heartbeat Completed Successfully - Total Updated: {$total} ===");
-            
-        } catch (Exception $e) {
-            $error = "Error during heartbeat: " . $e->getMessage();
-            $this->log($error);
-            $results['errors'][] = $error;
-        }
-        
-        return $results;
-    }
-    
-    /**
-     * Update counseling appointments to "missed" status
-     */
-    private function updateCounselingMissed($current_date) {
-        try {
-            // First, get all appointments that will be marked as missed
-            $select_query = "SELECT ca.id, ca.user_id, ca.appointment_date, ca.appointment_time, u.first_name, u.last_name
-                             FROM counseling_appointments ca
-                             JOIN users u ON ca.user_id = u.id
-                             WHERE ca.status = 'confirmed' 
-                             AND ca.appointment_date < ?
-                             AND ca.appointment_date IS NOT NULL";
-            
-            $select_stmt = $this->db->prepare($select_query);
-            $select_stmt->execute([$current_date]);
-            $missed_appointments = $select_stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Update the status
-            $update_query = "UPDATE counseling_appointments 
-                             SET status = 'missed', 
-                                 updated_at = NOW()
-                             WHERE status = 'confirmed' 
-                             AND appointment_date < ?
-                             AND appointment_date IS NOT NULL";
-            
-            $update_stmt = $this->db->prepare($update_query);
-            $update_stmt->execute([$current_date]);
-            $count = $update_stmt->rowCount();
-            
-            // Create notifications for each missed appointment
-            foreach ($missed_appointments as $appointment) {
-                $this->createMissedAppointmentNotification(
-                    $appointment['user_id'],
-                    $appointment['appointment_date'],
-                    $appointment['appointment_time'],
-                    $appointment['id']
-                );
-            }
-            
-            if ($count > 0) {
-                $this->log("Marked {$count} counseling appointments as MISSED and created notifications");
-            }
-            
-            return $count;
-        } catch (Exception $e) {
-            $this->log("Error updating counseling missed: " . $e->getMessage());
-            return 0;
-        }
-    }
-    
-    /**
-     * Update counseling appointments to "completed" status
-     */
-    private function updateCounselingCompleted($current_date) {
-        try {
-            // Appointments with an assigned counselor should move to in_progress;
-            // once the date has passed, auto-complete them.
-            $query = "UPDATE counseling_appointments 
-                      SET status = 'completed', 
-                          updated_at = NOW()
-                      WHERE status = 'in_progress' 
-                      AND appointment_date <= ?
-                      AND appointment_date IS NOT NULL
-                      AND DATE_ADD(appointment_date, INTERVAL 1 DAY) <= ?";
-            
-            $stmt = $this->db->prepare($query);
-            $stmt->execute([$current_date, $current_date]);
-            $count = $stmt->rowCount();
-            
-            if ($count > 0) {
-                $this->log("Marked {$count} counseling appointments as COMPLETED");
-            }
-            
-            return $count;
-        } catch (Exception $e) {
-            $this->log("Error updating counseling completed: " . $e->getMessage());
-            return 0;
-        }
-    }
-    
-    /**
-     * Update entrance exam appointments to "missed" status
-     */
-    private function updateExamMissed($current_date, $current_time) {
-        try {
-            // First, get all exam appointments that will be marked as missed
-            $select_query = "SELECT ea.id, ea.user_id, ea.preferred_date, ea.preferred_time
-                             FROM entrance_exam_appointments ea
-                             WHERE ea.status = 'confirmed' 
-                             AND (
-                                 ea.preferred_date < ?
-                                 OR (ea.preferred_date = ? AND ea.preferred_time < ?)
-                             )
-                             AND ea.preferred_date IS NOT NULL";
-            
-            $select_stmt = $this->db->prepare($select_query);
-            $select_stmt->execute([$current_date, $current_date, $current_time]);
-            $missed_exams = $select_stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Update the status
-            $update_query = "UPDATE entrance_exam_appointments 
-                             SET status = 'missed', 
-                                 updated_at = NOW()
-                             WHERE status = 'confirmed' 
-                             AND (
-                                 preferred_date < ?
-                                 OR (preferred_date = ? AND preferred_time < ?)
-                             )
-                             AND preferred_date IS NOT NULL";
-            
-            $update_stmt = $this->db->prepare($update_query);
-            $update_stmt->execute([$current_date, $current_date, $current_time]);
-            $count = $update_stmt->rowCount();
-            
-            // Create notifications for each missed exam
-            foreach ($missed_exams as $exam) {
-                $this->createExamMissedNotification(
-                    $exam['user_id'],
-                    $exam['preferred_date'],
-                    $exam['preferred_time'],
-                    $exam['id']
-                );
-            }
-            
-            if ($count > 0) {
-                $this->log("Marked {$count} entrance exam appointments as MISSED and created notifications");
-            }
-            
-            return $count;
-        } catch (Exception $e) {
-            $this->log("Error updating exam missed: " . $e->getMessage());
-            return 0;
-        }
-    }
-    
-    /**
-     * Get the status of a specific appointment
-     * 
-     * @param string $type 'counseling' or 'exam'
-     * @param int $appointment_id
-     * @return array|null Appointment data or null if not found
-     */
-    public function getAppointmentStatus($type, $appointment_id) {
-        try {
-            if ($type === 'counseling') {
-                $query = "SELECT id, status, appointment_date, appointment_time 
-                          FROM counseling_appointments 
-                          WHERE id = ?";
-            } else if ($type === 'exam') {
-                $query = "SELECT id, status, preferred_date, preferred_time 
-                          FROM entrance_exam_appointments 
-                          WHERE id = ?";
-            } else {
-                return null;
-            }
-            
-            $stmt = $this->db->prepare($query);
-            $stmt->execute([$appointment_id]);
-            return $stmt->fetch(PDO::FETCH_ASSOC);
-        } catch (Exception $e) {
-            $this->log("Error getting appointment status: " . $e->getMessage());
-            return null;
-        }
-    }
-    
-    /**
-     * Check if an appointment should be marked as missed
-     * 
-     * @param string $appointment_date Date in Y-m-d format
-     * @return bool True if appointment date has passed
-     */
-    public static function shouldBeMissed($appointment_date) {
-        $current_date = date('Y-m-d');
-        return strtotime($appointment_date) < strtotime($current_date);
-    }
-    
-    /**
-     * Check if an appointment should be marked as completed
-     * 
-     * @param string $appointment_date Date in Y-m-d format
-     * @return bool True if appointment date is today or past
-     */
-    public static function shouldBeCompleted($appointment_date) {
-        $current_date = date('Y-m-d');
-        $appointment_ts = strtotime($appointment_date);
-        $current_ts = strtotime($current_date);
-        $next_day_ts = strtotime($current_date . ' +1 day');
-        
-        return $appointment_ts <= $current_ts && $next_day_ts > $current_ts;
-    }
-    
-    /**
-     * Create a missed appointment notification
-     * 
-     * @param int $user_id User ID
-     * @param string $appointment_date Appointment date (Y-m-d)
-     * @param string $appointment_time Appointment time (H:i:s)
-     * @param int $appointment_id Appointment ID
-     */
-    private function createMissedAppointmentNotification($user_id, $appointment_date, $appointment_time, $appointment_id) {
-        try {
-            $formatted_date = date('F j, Y', strtotime($appointment_date));
-            $formatted_time = date('g:i A', strtotime($appointment_time));
-            
-            $title = "Appointment Missed";
-            $message = "Your counseling appointment scheduled for {$formatted_date} at {$formatted_time} was marked as missed.";
-            
-            $result = $this->notificationService->notify(
-                $user_id,
-                $title,
-                $message,
-                'appointment_missed',
-                'counseling_appointments',
-                $appointment_id,
-                true,
-                $title,
-                null,
-                'appointment_missed:' . $appointment_id
-            );
-            
-            if ($result) {
-                $this->log("Created missed appointment notification for user {$user_id} (Appointment ID: {$appointment_id})");
-            } else {
-                $this->log("Failed to create missed appointment notification for user {$user_id} (Appointment ID: {$appointment_id})");
-            }
-        } catch (Exception $e) {
-            $this->log("Error creating missed appointment notification: " . $e->getMessage());
-        }
-    }
-    
-    /**
-     * Create an exam missed notification
-     * 
-     * @param int $user_id User ID
-     * @param string $exam_date Exam date (Y-m-d)
-     * @param string $exam_time Exam time (H:i:s)
-     * @param int $exam_id Exam ID
-     */
-    private function createExamMissedNotification($user_id, $exam_date, $exam_time, $exam_id) {
-        try {
-            $formatted_date = date('F j, Y', strtotime($exam_date));
-            $formatted_time = date('g:i A', strtotime($exam_time));
-            
-            $title = "Entrance Exam Missed";
-            $message = "Your entrance exam scheduled for {$formatted_date} at {$formatted_time} was marked as missed.";
-            
-            $result = $this->notificationService->notify(
-                $user_id,
-                $title,
-                $message,
-                'exam_missed',
-                'entrance_exam_appointments',
-                $exam_id,
-                true,
-                $title,
-                null,
-                'exam_missed:' . $exam_id
-            );
-            
-            if ($result) {
-                $this->log("Created missed exam notification for user {$user_id} (Exam ID: {$exam_id})");
-            } else {
-                $this->log("Failed to create missed exam notification for user {$user_id} (Exam ID: {$exam_id})");
-            }
-        } catch (Exception $e) {
-            $this->log("Error creating missed exam notification: " . $e->getMessage());
-        }
-    }
+   }
+   if(!$dryRun)$this->db->exec("INSERT INTO system_settings(setting_key,setting_value,updated_at) VALUES('appointment_worker_last_run',1,NOW()) ON DUPLICATE KEY UPDATE setting_value=1,updated_at=NOW()");
+   if($this->logging&&!$dryRun&&($result['counseling_missed']+$result['exam_missed']>0))error_log('Guidance appointment check: '.($result['counseling_missed']+$result['exam_missed']).' missed statuses recorded.');
+  }catch(Throwable $e){if($this->db->inTransaction())$this->db->rollBack();$result['errors'][]='Appointment checking is temporarily unavailable.';}
+  finally{$this->db->prepare('SELECT RELEASE_LOCK(?)')->execute([$lock]);}return $result;
+ }
+ public function markMissedAppointments():array{$r=$this->run();return ['affected_count'=>$r['counseling_missed']+$r['exam_missed'],'message'=>'Appointment deadlines checked.','errors'=>$r['errors']];}
+ public function getAppointmentStatus($type,$id):?array {if(!in_array($type,['exam','counseling'],true))return null;$q=$this->db->prepare('SELECT * FROM '.($type==='exam'?'entrance_exam_appointments':'counseling_appointments').' WHERE id=?');$q->execute([$id]);return $q->fetch(PDO::FETCH_ASSOC)?:null;}
+ public static function shouldBeMissed($date):bool{$d=self::date(is_string($date)?$date:null);return $d&&$d<new DateTimeImmutable('today',new DateTimeZone('Asia/Manila'));}
+ public static function shouldBeCompleted($date):bool{return false;}
 }

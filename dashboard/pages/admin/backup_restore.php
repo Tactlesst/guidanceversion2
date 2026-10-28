@@ -28,14 +28,8 @@ if ($_POST) {
             // Create backup filename with timestamp
             $backup_file = $backup_dir . '/backup_' . date('Y-m-d_H-i-s') . '.sql';
             
-            // Use mysqldump to create backup
-            $host = 'localhost';
-            $username = 'root';
-            $password = '';
-            
-            $command = "mysqldump --host={$host} --user={$username} --password={$password} {$db_name} > {$backup_file} 2>&1";
-            exec($command, $output, $return_code);
-            
+            // Export through the same central PDO connection, including compatibility views.
+            $backup_file=createPHPBackup($conn,$backup_dir);$return_code=$backup_file?0:1;
             if ($return_code === 0 && file_exists($backup_file)) {
                 $_SESSION['success_message'] = "Backup created successfully: " . basename($backup_file);
                 logAdminAction('create_backup', "Created backup: " . basename($backup_file), null, $conn);
@@ -127,48 +121,17 @@ if ($_POST) {
 }
 
 // Function to create backup using PHP (fallback)
-function createPHPBackup($conn, $backup_dir) {
-    try {
-        $db_name = $conn->query("SELECT DATABASE()")->fetchColumn();
-        $backup_file = $backup_dir . '/backup_' . date('Y-m-d_H-i-s') . '.sql';
-        $fp = fopen($backup_file, 'w');
-        
-        // Get all tables
-        $tables = $conn->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
-        
-        foreach ($tables as $table) {
-            fwrite($fp, "-- Table: $table\n");
-            fwrite($fp, "DROP TABLE IF EXISTS `$table`;\n");
-            
-            // Get create table statement
-            $create_table = $conn->query("SHOW CREATE TABLE `$table`")->fetch();
-            fwrite($fp, $create_table['Create Table'] . ";\n\n");
-            
-            // Get table data
-            $rows = $conn->query("SELECT * FROM `$table`")->fetchAll(PDO::FETCH_ASSOC);
-            if (!empty($rows)) {
-                $columns = array_keys($rows[0]);
-                $columns_str = '`' . implode('`,`', $columns) . '`';
-                
-                foreach ($rows as $row) {
-                    $values = array_map(function($val) {
-                        if ($val === null) return 'NULL';
-                        if (is_numeric($val)) return $val;
-                        return "'" . addslashes($val) . "'";
-                    }, $row);
-                    $values_str = implode(',', $values);
-                    fwrite($fp, "INSERT INTO `$table` ($columns_str) VALUES ($values_str);\n");
-                }
-                fwrite($fp, "\n");
-            }
+function createPHPBackup($conn,$backup_dir) {
+    $fp=null;$owned=!$conn->inTransaction();
+    try{
+        if($owned)$conn->beginTransaction();$file=$backup_dir.'/backup_'.date('Y-m-d_H-i-s').'.sql';$fp=fopen($file,'wb');if(!$fp)throw new RuntimeException('Backup file unavailable.');
+        fwrite($fp,"-- SRCB Guidance database backup\nSET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n");$objects=$conn->query('SHOW FULL TABLES')->fetchAll(PDO::FETCH_NUM);$views=[];
+        foreach($objects as [$table,$type])if($type==='VIEW'){fwrite($fp,'DROP VIEW IF EXISTS `'.str_replace('`','``',$table).'`;'."\n");$views[]=$table;}
+        foreach($objects as [$table,$type]){if($type==='VIEW')continue;$name='`'.str_replace('`','``',$table).'`';$create=$conn->query('SHOW CREATE TABLE '.$name)->fetch(PDO::FETCH_ASSOC);fwrite($fp,'DROP TABLE IF EXISTS '.$name.';'."\n".$create['Create Table'].";\n");$backupColumns=$conn->query('SHOW COLUMNS FROM '.$name)->fetchAll(PDO::FETCH_ASSOC);$writableColumns=array_column(array_filter($backupColumns,static fn($column)=>stripos($column['Extra']??'','GENERATED')===false),'Field');$selectColumns=implode(',',array_map(static fn($column)=>'`'.str_replace('`','``',$column).'`',$writableColumns));$rows=$conn->query('SELECT '.$selectColumns.' FROM '.$name);
+            while($row=$rows->fetch(PDO::FETCH_ASSOC)){$columns=implode(',',array_map(static fn($c)=>'`'.str_replace('`','``',$c).'`',array_keys($row)));$values=implode(',',array_map(static fn($v)=>$v===null?'NULL':$conn->quote((string)$v),array_values($row)));fwrite($fp,'INSERT INTO '.$name.' ('.$columns.') VALUES ('.$values.");\n");}
         }
-        
-        fclose($fp);
-        return $backup_file;
-    } catch (Exception $e) {
-        error_log("PHP backup failed: " . $e->getMessage());
-        return false;
-    }
+        foreach($views as $table){$create=$conn->query('SHOW CREATE VIEW `'.str_replace('`','``',$table).'`')->fetch(PDO::FETCH_ASSOC);fwrite($fp,$create['Create View'].";\n");}fwrite($fp,"SET FOREIGN_KEY_CHECKS=1;\n");fclose($fp);$fp=null;if($owned)$conn->commit();return $file;
+    }catch(Throwable $e){if(is_resource($fp))fclose($fp);if($owned&&$conn->inTransaction())$conn->rollBack();error_log('The database backup could not be created.');return false;}
 }
 
 // Get backup files

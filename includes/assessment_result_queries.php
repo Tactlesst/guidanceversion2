@@ -1,29 +1,17 @@
 <?php
-// Use identical result definitions for summary counts, filters and pagination.
-function assessmentResultQuery(string $type = 'all', string $search = ''): array {
-    if (!in_array($type, ['all','multiple_intelligence','learning_style','learning_style_intermediate'], true)) {
-        throw new InvalidArgumentException('Choose a valid assessment type.');
+require_once __DIR__.'/survey_annual.php';
+// Summary counts, filters and rows share the same annual result definitions.
+function assessmentResultQuery(string $type='all',string $search='',string $schoolYear=''):array {
+    $kinds=['multiple_intelligence'=>'mi','learning_style'=>'ls','learning_style_intermediate'=>'ls_intermediate'];if($type!=='all'&&!isset($kinds[$type]))throw new InvalidArgumentException('Choose a valid assessment type.');
+    if($schoolYear!==''&&$schoolYear!=='legacy'&&!SurveyAnnual::validYear($schoolYear))throw new InvalidArgumentException('Choose a valid school year.');
+    $parts=[];
+    foreach($kinds as $label=>$kind){if($type!=='all'&&$type!==$label)continue;$table=SurveyAnnual::table($kind);$fields=[];
+        foreach(['first_name'=>'u.first_name','last_name'=>'u.last_name','email'=>'u.email','student_id'=>'sp.student_id','department'=>'sp.department','grade_level'=>'sp.grade_level'] as $key=>$fallback){$json="CASE WHEN JSON_VALID(a.profile_snapshot) THEN a.profile_snapshot ELSE '{}' END";$fields[]="CASE WHEN a.profile_snapshot IS NOT NULL THEN CASE WHEN JSON_TYPE(JSON_EXTRACT($json,'$.$key'))='NULL' THEN '' ELSE COALESCE(JSON_UNQUOTE(JSON_EXTRACT($json,'$.$key')),'') END ELSE $fallback END AS $key";}
+        $ids=$kind==='mi'?"a.id AS mi_id,a.completed_at AS mi_date,NULL AS ls_id,NULL AS ls_date,NULL AS ls_level":"NULL AS mi_id,NULL AS mi_date,a.id AS ls_id,a.completed_at AS ls_date,'".($kind==='ls'?'standard':'intermediate')."' AS ls_level";
+        $parts[]='SELECT u.id AS user_id,'.implode(',',$fields).",$ids,a.school_year,a.completed_at AS sort_date,'$label' AS assessment_type FROM $table a JOIN users u ON u.id=a.user_id LEFT JOIN student_profiles sp ON sp.user_id=u.id";
     }
-    $parts=[];$params=[];
-    $searchSql=$search!==''?' AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR sp.student_id LIKE ?)':'';
-    if ($type==='all'||$type==='multiple_intelligence') {
-        $parts[]="SELECT u.id AS user_id,u.first_name,u.last_name,u.email,sp.student_id,sp.department,sp.grade_level,
-            mis.id AS mi_id,mis.completed_at AS mi_date,NULL AS ls_id,NULL AS ls_date,
-            NULL AS ls_level,mis.completed_at AS sort_date,'multiple_intelligence' AS assessment_type
-            FROM multiple_intelligence_survey mis
-            JOIN student_profiles sp ON sp.student_id=mis.student_id
-            JOIN users u ON u.id=sp.user_id WHERE 1=1".$searchSql;
-        if($search!=='')$params=array_merge($params,array_fill(0,4,'%'.$search.'%'));
-    }
-    foreach (['learning_style'=>'learning_style_inventory','learning_style_intermediate'=>'learning_style_inventory_intermediate'] as $assessmentType=>$table) {
-        if($type!=='all'&&$type!==$assessmentType)continue;
-        $level=$assessmentType==='learning_style_intermediate'?'intermediate':'standard';
-        $parts[]="SELECT u.id AS user_id,u.first_name,u.last_name,u.email,sp.student_id,sp.department,sp.grade_level,
-            NULL AS mi_id,NULL AS mi_date,lsi.id AS ls_id,lsi.created_at AS ls_date,
-            '$level' AS ls_level,lsi.created_at AS sort_date,'$assessmentType' AS assessment_type
-            FROM $table lsi JOIN users u ON u.id=lsi.user_id
-            LEFT JOIN student_profiles sp ON sp.user_id=u.id WHERE 1=1".$searchSql;
-        if($search!=='')$params=array_merge($params,array_fill(0,4,'%'.$search.'%'));
-    }
-    return [implode(' UNION ALL ',$parts),$params];
+    $sql='SELECT * FROM ('.implode(' UNION ALL ',$parts).') annual_results';$where=[];$params=[];
+    if($schoolYear!==''){$where[]='school_year=?';$params[]=$schoolYear==='legacy'?'':$schoolYear;}
+    if($search!==''){$where[]='(first_name LIKE ? OR last_name LIKE ? OR email LIKE ? OR student_id LIKE ?)';$params=array_merge($params,array_fill(0,4,'%'.$search.'%'));}
+    if($where)$sql.=' WHERE '.implode(' AND ',$where);return [$sql,$params];
 }

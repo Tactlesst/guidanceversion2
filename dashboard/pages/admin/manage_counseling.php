@@ -1,4 +1,5 @@
 <?php
+if(!defined('IN_LAYOUT')){http_response_code(403);exit;}
 require_once __DIR__ . '/../../../config/database.php';
 require_once __DIR__ . '/../../../classes/CounselingAppointment.php';
 require_once __DIR__ . '/../../../classes/CounselingRemarks.php';
@@ -32,6 +33,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_completed_details') {
     
     try {
         $appointment = $counseling->getById($id);
+        if($role==='guidance_advocate')OfficePolicy::ownSession($db,(int)$uid,$id);
         if (!$appointment) {
             echo json_encode(['error' => 'Appointment not found']);
             exit();
@@ -70,23 +72,20 @@ if ($_POST) {
         $advocate_id = $_POST['assigned_advocate_id'] ?? null;
         if (!$advocate_id) { $error_message = "Select a counselor to assign."; }
         else {
-            $counseling->assignAdvocate($appointment_id, $advocate_id);
+            $counseling->assignAdvocate($appointment_id, $advocate_id, (int)$uid);
             $app = $counseling->getById($appointment_id);
-            if ($app) {
-                try { $notif->create($advocate_id, "New Assignment", "You have been assigned to a counseling session on " . date('M j, Y', strtotime($app['appointment_date'])) . " at " . date('g:i A', strtotime($app['appointment_time'])), 'advocate_assignment'); } catch(Exception $e) {}
-            }
             if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message'] = "Counselor assigned successfully!"; header("Location: " . portalSaveRedirect("layout.php?page=manage_counseling")); exit();
         }
     }
 
     if (isset($_POST['start_session'])) {
-        $counseling->updateStatus($_POST['appointment_id'], 'in_progress');
+        $counseling->updateStatus($_POST['appointment_id'], 'in_progress', (int)$uid);
         if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message'] = "Session started!"; header("Location: " . portalSaveRedirect("layout.php?page=manage_counseling")); exit();
     }
 
     if (isset($_POST['complete_appointment'])) {
         $appointment_id = $_POST['appointment_id'];
-        $counseling->updateStatus($appointment_id, 'completed');
+        $counseling->updateStatus($appointment_id, 'completed', (int)$uid);
         if (!empty($_POST['remarks'])) {
             $remarks_obj->appointment_id = $appointment_id;
             $remarks_obj->counselor_id = $_SESSION['user_id'];
@@ -100,33 +99,28 @@ if ($_POST) {
     if (isset($_POST['cancel_appointment'])) {
         $counseling->cancelAppointment($_POST['appointment_id']);
         $app = $counseling->getById($_POST['appointment_id']);
-        if ($app) { try { $notif->create($app['user_id'], "Appointment Cancelled", "Your counseling appointment has been cancelled.", 'appointment_cancelled'); } catch(Exception $e) {} }
         if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message'] = "Appointment cancelled."; header("Location: " . portalSaveRedirect("layout.php?page=manage_counseling")); exit();
     }
 
     if (isset($_POST['mark_missed'])) {
-        $counseling->updateStatus($_POST['appointment_id'], 'missed');
+        $counseling->updateStatus($_POST['appointment_id'], 'missed', (int)$uid);
         $app = $counseling->getById($_POST['appointment_id']);
-        if ($app) { try { $notif->create($app['user_id'], "Appointment Missed", "Your counseling appointment was marked as missed.", 'warning'); } catch(Exception $e) {} }
         if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message'] = "Marked as missed."; header("Location: " . portalSaveRedirect("layout.php?page=manage_counseling")); exit();
     }
 
     if (isset($_POST['reschedule_appointment'])) {
         $id = $_POST['appointment_id']; $nd = $_POST['new_date']; $nt = $_POST['new_time'];
-        $stmt = $db->prepare("UPDATE counseling_appointments SET appointment_date=?, appointment_time=?, updated_at=NOW() WHERE id=?");
-        $stmt->execute([$nd, $nt, $id]);
+        try{$counseling->saveStaffSchedule((int)$id,$nd,$nt,false,(int)$_SESSION['user_id']);}
+        catch(Throwable $e){$_SESSION['error_message']=$e instanceof PDOException?'The appointment could not be rescheduled. Please try again.':$e->getMessage();header('Location: '.portalSaveRedirect('layout.php?page=manage_counseling'));exit;}
         $app = $counseling->getById($id);
-        if ($app) { try { $notif->create($app['user_id'], "Appointment Rescheduled", "Your appointment has been rescheduled to " . date('M j, Y', strtotime($nd)) . " at " . date('g:i A', strtotime($nt)), 'appointment_rescheduled'); } catch(Exception $e) {} }
         if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message'] = "Appointment rescheduled!"; header("Location: " . portalSaveRedirect("layout.php?page=manage_counseling")); exit();
     }
 
     if (isset($_POST['schedule_followup'])) {
         $parent_id = $_POST['appointment_id']; $user_id = $_POST['user_id'];
         $fdate = $_POST['followup_date']; $ftime = $_POST['followup_time'];
-        $stmt = $db->prepare("INSERT INTO counseling_appointments (user_id, appointment_date, appointment_time, concern_type, concern_description, urgency_level, status, assigned_advocate_id, is_follow_up, parent_appointment_id, created_at) VALUES (?, ?, ?, 'Follow-up', 'Follow-up session', 'normal', 'confirmed', ?, 1, ?, NOW())");
-        $stmt->execute([$user_id, $fdate, $ftime, $_SESSION['user_id'], $parent_id]);
-        $db->prepare("UPDATE counseling_appointments SET status='completed', updated_at=NOW() WHERE id=?")->execute([$parent_id]);
-        try { $notif->create($user_id, "Follow-up Scheduled", "A follow-up session has been scheduled for " . date('M j, Y', strtotime($fdate)) . " at " . date('g:i A', strtotime($ftime)), 'follow_up_scheduled'); } catch(Exception $e) {}
+        try{$saved=$counseling->saveStaffSchedule((int)$parent_id,$fdate,$ftime,true,(int)$_SESSION['user_id']);$user_id=$saved['user_id'];}
+        catch(Throwable $e){$_SESSION['error_message']=$e instanceof PDOException?'The follow-up could not be scheduled. Please try again.':$e->getMessage();header('Location: '.portalSaveRedirect('layout.php?page=manage_counseling'));exit;}
         if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message'] = "Follow-up scheduled!"; header("Location: " . portalSaveRedirect("layout.php?page=manage_counseling")); exit();
     }
 
@@ -159,13 +153,14 @@ $admins = $user_obj->getUsersByRole('admin');
 $counselors = [];
 $ca = $admins->fetchAll(PDO::FETCH_ASSOC); $cb = $advocates->fetchAll(PDO::FETCH_ASSOC);
 $counselors = array_merge($ca, $cb);
+if($role==='guidance_advocate')$counselors=array_values(array_filter($counselors,fn($c)=>(int)$c['id']===(int)$uid));
 
 $status_colors = ['pending'=>'yellow','confirmed'=>'blue','in_progress'=>'orange','completed'=>'green','cancelled'=>'red','missed'=>'gray'];
 $status_icons = ['pending'=>'fa-clock','confirmed'=>'fa-check-circle','in_progress'=>'fa-comments','completed'=>'fa-check-double','cancelled'=>'fa-times-circle','missed'=>'fa-exclamation-triangle'];
 ?>
 
 <link rel="stylesheet" href="../assets/css/appointment-dialogs.css?v=20261028-1">
-<link rel="stylesheet" href="../assets/css/manage-counseling-workspace.css?v=20261028-1">
+<link rel="stylesheet" href="../assets/css/manage-counseling-workspace.css?v=20261028-1"><?php if($role==='guidance_advocate'):?><p class="oa-notice">You can claim an unassigned session for yourself, work on your own sessions, and add follow-ups. Ask the counselor/admin to reassign, reschedule or cancel an appointment.</p><?php endif;?>
 <div class="space-y-6 mc-workspace">
     <!-- Header -->
     <div class="flex items-center justify-between flex-wrap gap-3">
@@ -186,7 +181,7 @@ $status_icons = ['pending'=>'fa-clock','confirmed'=>'fa-check-circle','in_progre
 
     <?php
     // Keep existing action handlers; present identity and purpose without oversized rows.
-    $renderRows = function($stmt,$actions) {
+    $renderRows = function($stmt,$actions) use($role,$uid) {
         $html='';$e=static fn($value)=>htmlspecialchars((string)$value,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
         while($a=$stmt->fetch(PDO::FETCH_ASSOC)){
             $name=trim(($a['last_name']??'').', '.($a['first_name']??''),', ');
@@ -201,7 +196,17 @@ $status_icons = ['pending'=>'fa-clock','confirmed'=>'fa-check-circle','in_progre
             $html.='<td class="mc-purpose" data-label="Concern"><span class="mc-concern-type">'.$e(str_replace('_',' ',$a['concern_type']??'Concern')).'</span><p>'.$e($preview?:'No description provided.').'</p>'.($long?'<button type="button" class="mc-read-purpose" data-purpose="'.$e($full).'" data-student="'.$e($name).'">Read concern</button>':'').'</td>';
             $html.='<td class="mc-status"><span data-status="'.$e($a['status']).'">'.$e(ucfirst($status)).'</span></td>';
             $html.='<td class="mc-counselor" data-label="Counselor">'.($advocate?$e($advocate):'<span class="mc-unassigned">Not assigned</span>').'</td>';
-            $html.='<td class="mc-actions"><div>'.$actions($a).'</div></td></tr>';
+            $actionHtml=$actions($a);
+            if($role==='guidance_advocate'){
+                $actionHtml='';$record=(int)$a['id'];$mine=(int)$a['assigned_advocate_id']===(int)$uid;
+                if(empty($a['assigned_advocate_id'])&&in_array($a['status'],['pending','confirmed'],true))$actionHtml='<button type="button" onclick="openAssignModal('.$record.')" title="Assign to myself"><i class="fas fa-user-check"></i> Assign to myself</button>';
+                elseif($mine){
+                    if(in_array($a['status'],['pending','confirmed'],true))$actionHtml='<button type="button" onclick="startSession('.$record.')">Start session</button>';
+                    elseif($a['status']==='in_progress')$actionHtml='<button type="button" onclick="completeAppt('.$record.')">Complete session</button>';
+                    elseif($a['status']==='completed')$actionHtml='<button type="button" onclick="viewCompletedSession('.$record.')">View my session</button><button type="button" onclick="openFollowupModal('.$record.','.(int)$a['user_id'].')">Add follow-up</button>';
+                }else $actionHtml='<span>Assigned to another counselor</span>';
+            }
+            $html.='<td class="mc-actions"><div>'.$actionHtml.'</div></td></tr>';
         }
         return $html?:'<tr class="mc-no-records"><td colspan="6"><i class="fas fa-calendar-check" aria-hidden="true"></i><strong>No appointments in this status</strong><p>Choose another status card to view its appointments.</p></td></tr>';
     };
@@ -291,7 +296,7 @@ $adHeader=static function($id,$eyebrow,$title,$subtitle,$icon){?>
 $adContext=static function($id){?><div class="ad-form-student" data-appointment-context="<?=$id?>"><span class="ad-avatar" aria-hidden="true"><i class="fas fa-user"></i></span><div><strong>Selected student</strong><p>Appointment details</p></div></div><?php };
 ?>
 <div id="assignModal" class="pd-overlay hidden appointment-dialog" data-portal-dialog data-managed-dialog role="dialog" aria-modal="true" aria-labelledby="assignModalTitle"><div class="pd-card">
-<?php $adHeader('assignModal','COUNSELOR ASSIGNMENT','Assign counselor','Choose who will handle this counseling appointment.','fa-user-plus');?>
+<?php $adHeader('assignModal','COUNSELOR ASSIGNMENT',$role==='guidance_advocate'?'Assign to myself':'Assign counselor',$role==='guidance_advocate'?'Claim this unassigned session as its assigned advocate.':'Choose who will handle this counseling appointment.','fa-user-plus');?>
 <form data-portal-save method="POST"><input type="hidden" name="assign_counselor" value="1"><input type="hidden" name="appointment_id" id="assign_appointment_id"><div class="pd-body"><div class="ad-form-student"><span class="ad-avatar" aria-hidden="true"><i class="fas fa-user"></i></span><div><strong id="assign_student_name">Selected student</strong><p><span id="assign_student_id"></span><span class="ad-separator"> · </span><span id="assign_grade_level"></span></p></div></div><div class="ad-schedule-note"><i class="fas fa-calendar" aria-hidden="true"></i><span id="assign_appointment_datetime"></span></div><div class="pd-field"><label for="assign_counselor_select">Guidance counselor / advocate <span aria-hidden="true">*</span></label><select name="assigned_advocate_id" id="assign_counselor_select" required><option value="">Choose a counselor</option><?php foreach($counselors as $c):?><option value="<?=(int)$c['id']?>"><?=htmlspecialchars($c['first_name'].' '.$c['last_name'].' ('.ucwords(str_replace('_',' ',$c['role'])).')',ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?></option><?php endforeach;?></select><p class="pd-hint">The selected counselor will be responsible for this session.</p></div></div><footer class="pd-footer"><button type="button" class="pd-button" data-dialog-close="assignModal">Cancel</button><button type="submit" class="pd-button pd-button-primary"><i class="fas fa-check" aria-hidden="true"></i>Assign counselor</button></footer></form></div></div>
 
 <div id="rescheduleModal" class="pd-overlay hidden appointment-dialog" data-portal-dialog data-managed-dialog role="dialog" aria-modal="true" aria-labelledby="rescheduleModalTitle"><div class="pd-card">
@@ -311,4 +316,4 @@ $adContext=static function($id){?><div class="ad-form-student" data-appointment-
 <?php endforeach;?>
 
 <script src="../assets/js/counseling-dialogs.js?v=20261028-1"></script>
-<script src="../assets/js/manage-counseling-workspace.js?v=20261028-1"></script>
+<script src="../assets/js/manage-counseling-workspace.js?v=20261029-label-fix"></script>

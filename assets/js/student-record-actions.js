@@ -29,13 +29,29 @@ function renderStudentRecord(student){
     function section(title,entries){const group=srNode('section','sr-record-section'),heading=srNode('h3','',title),grid=srNode('dl','sr-record-grid');for(const [label,value] of entries){const item=srNode('div');item.append(srNode('dt','',label),srNode('dd','',value||'Not assigned'));grid.append(item);}group.append(heading,grid);content.append(group);}
     section('Student information',[['Student ID',student.student_id],['Email',student.email||'Not provided'],['Account created',srDate(student.created_at)],['Academic record updated',srDate(student.academic_updated_at)]]);
     section('Academic assignment',[['Department',student.department],['Grade / year',student.grade_level],...(student.strand?[['Strand',student.strand]]:student.program?[['Program',student.program]]:[['Strand / program','Not assigned']])]);
-    const pds=srNode('section','sr-record-pds');pds.append(srNode('h3','','Personal data sheet'));const p=student.pds;pds.append(srNode('p','',p?'PDS available'+(p.school_year?' · School year '+p.school_year:'')+' · Updated '+srDate(p.updated_at):'No personal data sheet has been submitted yet.'));
-    if(student.can_view_pds&&p){const open=srNode('button','sr-open-pds','View personal data sheet');open.type='button';open.addEventListener('click',()=>openStudentPds(p.id));pds.append(open);}content.append(pds);
+    const pds=srNode('section','sr-record-pds');pds.append(srNode('h3','','Personal data sheets & school years'));const p=student.pds;pds.append(srNode('p','',p?'Current PDS'+(p.school_year?' · School year '+p.school_year:'')+' · Updated '+srDate(p.updated_at):student.can_view_pds_history?'No current PDS record. Earlier saved school years are listed below.':'No personal data sheet has been submitted yet.'));
+    if(student.can_view_pds&&p){const open=srNode('button','sr-open-pds','View current PDS');open.type='button';open.addEventListener('click',()=>openStudentPds(p.id));pds.append(open);}
+    const years=Array.isArray(student.pds_years)?student.pds_years:[];
+    if(years.length){
+        const list=srNode('div','sr-pds-years');
+        for(const annual of years){const card=srNode('article','sr-pds-year'),top=srNode('div','sr-pds-year-top'),year=srNode('strong','',annual.school_year||'School year not recorded'),badge=srNode('span','sr-pds-year-badge',annual.closed_at?'Archived school year':annual.reviewed_at?'Annual review completed':'Annual review pending');
+            top.append(year,badge);card.append(top,srNode('p','','Saved '+srDate(annual.captured_at)+' · Version '+annual.version_no));
+            const view=srNode('a','sr-open-pds','View this school year');view.href='layout.php?page=pds_history&user_id='+encodeURIComponent(student.id)+'&version='+encodeURIComponent(annual.version_id);card.append(view);list.append(card);
+        }pds.append(list);
+    }
+    if(student.can_view_pds_history){const history=srNode('a','sr-pds-history-link','All school years & change history ('+Number(student.pds_version_count)+' saved versions)');history.href='layout.php?page=pds_history&user_id='+encodeURIComponent(student.id);pds.append(history);}
+    else if(p)pds.append(srNode('p','sr-pds-history-empty','No earlier school-year snapshots have been saved yet.'));
+    content.append(pds);
 }
 async function openStudentPds(id){
     const modal=document.getElementById('studentPdsModal'),holder=document.getElementById('srPdsContent');holder.replaceChildren(srNode('p','sr-loading','Loading personal data sheet…'));window.PortalDialogs.close(document.getElementById('studentRecordModal'));window.PortalDialogs.open(modal);
-    try{const response=await fetch('pages/admin/admin_view_pds.php?id='+encodeURIComponent(id),{headers:{'X-Requested-With':'XMLHttpRequest'}});if(!response.ok)throw new Error('Unavailable');const html=await response.text();if(!modal.isConnected||modal.classList.contains('hidden'))return;holder.innerHTML=html;await window.PDSPaper.mount(holder.querySelector('[data-pds-document]'),modal);}catch(error){holder.replaceChildren(srNode('p','sr-loading','The personal data sheet could not be opened. Please try again.'));}
+    try{const response=await fetch('pages/admin/admin_view_pds.php?id='+encodeURIComponent(id),{headers:{'X-Requested-With':'XMLHttpRequest'}});if(!response.ok)throw new Error('Unavailable');const html=await response.text();if(!modal.isConnected||modal.classList.contains('hidden'))return;holder.innerHTML=html;modal.dataset.pdsId=String(id);await window.PDSPaper.mount(holder.querySelector('[data-pds-document]'),modal);}catch(error){holder.replaceChildren(srNode('p','sr-loading','The personal data sheet could not be opened. Please try again.'));}
 }
 function closeStudentPds(){const modal=document.getElementById('studentPdsModal');window.PDSPaper?.dispose(modal.querySelector('[data-pds-document]'));window.PortalDialogs.close(modal);if(currentViewedStudent)window.PortalDialogs.open(document.getElementById('studentRecordModal'));}
 document.getElementById('studentsBody').addEventListener('click',event=>{const view=event.target.closest('[data-view-student]'),assign=event.target.closest('[data-assign-student]');if(view)viewStudentRecord(view.dataset.viewStudent);else if(assign)assignStudentAcademics(assign.dataset.assignStudent);});
 document.getElementById('srRecordAssign').addEventListener('click',()=>{if(currentViewedStudent)assignStudentAcademics(currentViewedStudent.id);});
+
+document.getElementById('srPdsPrint').addEventListener('click',async()=>{
+    const modal=document.getElementById('studentPdsModal'),root=modal.querySelector('[data-pds-document]'),button=document.getElementById('srPdsPrint'),status=modal.querySelector('[data-pds-status]');if(!root||!modal.dataset.pdsId)return;button.disabled=true;
+    try{await window.OfficeApprovals.authorize('pds',{id:Number(modal.dataset.pdsId),paper:modal.querySelector('[data-pds-paper-select]').value});await window.PDSPaper.print(root);}catch(error){status.textContent=error.message;}finally{button.disabled=false;window.OfficeApprovals?.paint();}
+});

@@ -15,7 +15,7 @@ ini_set('display_errors', 0);
 ob_start();
 
 require_once '../config/database.php';
-require_once '../includes/session.php';
+require_once '../includes/session.php';require_once '../includes/pds_address.php';
 
 ob_clean();
 
@@ -113,7 +113,7 @@ try {
                 // Contact Information
                 'mobile_number' => $student['mobile_number'],
                 'email_he' => $student['email_he'],
-                'home_address_he' => $student['home_address_he'],
+                'home_address_he' => PDSAddress::display($student['home_address_he']??'',false),
                 
                 // Family Information
                 'father_given_name' => $student['father_given_name'],

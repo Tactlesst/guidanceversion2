@@ -12,6 +12,7 @@ class EntranceExamResults {
     private $table_name = "entrance_exam_appointments";
 
     // Properties
+    public $exam_result;
     public $appointment_id;
     public $exam_date;
     public $olsat_level;
@@ -81,7 +82,8 @@ class EntranceExamResults {
         $this->sanitizeInputs();
 
         // Determine exam result based on qualification
-        $exam_result = !empty($this->qualified_grade) ? 'passed' : 'failed';
+        $exam_result=$this->exam_result;
+        if(!in_array($exam_result,['passed','failed'],true))throw new InvalidArgumentException('Record an explicit Passed or Failed decision before releasing results.');
 
         // Bind parameters
         $stmt->bindParam(":appointment_id", $this->appointment_id);

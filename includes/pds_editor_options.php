@@ -12,7 +12,9 @@ final class PDSEditorOptions {
             'grade_level'=>[],'course'=>[],'strand'=>[],'year_level'=>[],
             'semester'=>['1st Semester','2nd Semester','Summer / Midyear'],
             'suffix'=>['Jr.','Sr.','II','III','IV','V'],
-            'civil_status'=>['Single','Married','Widowed','Separated','Annulled']
+            'civil_status'=>['Single','Married','Widowed','Separated','Annulled'],
+            'citizenship'=>['Filipino','Others'],
+            'religion'=>['Roman Catholic','Islam','Iglesia ni Cristo','Aglipayan','Protestant / Christian','Evangelical Christian','Baptist','Seventh-day Adventist','Jehovah’s Witnesses','Buddhism','Hinduism','None','Others']
         ];
         try {
             $q=$db->prepare('SELECT id FROM academic_departments WHERE name=? AND is_active=1 LIMIT 1');

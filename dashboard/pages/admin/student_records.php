@@ -1,4 +1,5 @@
 <?php
+if(!defined('IN_LAYOUT')){http_response_code(403);exit;}
 require_once __DIR__ . '/../../../classes/User.php';
 require_once __DIR__ . '/../../../classes/PersonalDataSheet.php';
 
@@ -22,7 +23,7 @@ if(($_GET['action']??'')==='get_record'){
     if(!in_array($_SESSION['role']??'',['admin','guidance_advocate','super_admin'],true)){http_response_code(403);echo json_encode(['error'=>'Access denied.']);exit;}
     $id=filter_var($_GET['id']??null,FILTER_VALIDATE_INT);
     if(!$id||$id<1){http_response_code(400);echo json_encode(['error'=>'Choose a valid student.']);exit;}
-    $record=studentRecordSummary($db,$id,($_SESSION['role']??'')==='admin');
+    $record=studentRecordSummary($db,$id,in_array($role,['admin','guidance_advocate','super_admin'],true));
     if(!$record){http_response_code(404);echo json_encode(['error'=>'Student record unavailable.']);exit;}
     if(function_exists('staffActivityInteraction'))staffActivityInteraction('student_records','view_student_record');
     echo json_encode(['record'=>$record],JSON_INVALID_UTF8_SUBSTITUTE);exit;
@@ -123,7 +124,7 @@ foreach ($departments as $dept) {
 }
 ?>
 
-<link rel="stylesheet" href="../assets/css/student-record-actions.css?v=20261028-summary">
+<link rel="stylesheet" href="../assets/css/student-record-actions.css?v=20261029-history">
 <div class="space-y-6">
 <?php if($success_message||$error_message):?><script type="application/json" data-portal-feedback><?=json_encode(['success'=>$success_message,'error'=>$error_message],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE)?></script><?php endif;?>
     <div class="flex items-center justify-between">
@@ -203,8 +204,8 @@ foreach ($departments as $dept) {
         </form>
     </div>
 </div>
-<div id="studentRecordModal" class="pd-overlay hidden sr-record-modal" data-portal-dialog data-managed-dialog role="dialog" aria-modal="true" aria-labelledby="srRecordTitle"><div class="pd-card"><header class="pd-header"><span class="pd-heading-icon" aria-hidden="true"><i class="fas fa-address-card"></i></span><div class="pd-heading-copy"><p class="sr-eyebrow">STUDENT RECORD</p><h2 id="srRecordTitle">Student record</h2><p>Student information and current academic assignment.</p></div><button type="button" class="pd-close" aria-label="Close student record" data-dialog-close="studentRecordModal">×</button></header><div class="pd-body" id="srRecordContent" aria-live="polite"></div><footer class="pd-footer"><button type="button" class="pd-button" data-dialog-close="studentRecordModal">Close</button><button type="button" class="pd-button pd-button-primary" id="srRecordAssign" hidden>Assign academics</button></footer></div></div>
-<div id="studentPdsModal" class="pd-overlay hidden" data-portal-dialog data-managed-dialog role="dialog" aria-modal="true" aria-labelledby="srPdsTitle"><div class="pd-card pd-card-wide pds-paper-modal"><header class="pd-header"><div class="pd-heading-copy"><h2 id="srPdsTitle">Personal data sheet</h2><p>Student's saved paper form.</p></div><button type="button" class="pd-close" aria-label="Close student personal data sheet" onclick="closeStudentPds()">×</button></header><div class="pd-body pds-paper-modal-body"><div class="pds-document-toolbar"><label>Paper <select data-pds-paper-select aria-label="PDS paper size"><option value="long">Long bond (8.5 × 13 in)</option><option value="a4">A4</option><option value="letter">Letter</option></select></label><button type="button" data-pds-zoom="fit" aria-pressed="true">Fit width</button><button type="button" data-pds-zoom="actual" aria-pressed="false">Actual size</button></div><p class="pds-paper-status" data-pds-status role="status"></p><div class="pds-document-viewport" id="srPdsContent"></div></div></div></div>
+<div id="studentRecordModal" class="pd-overlay hidden sr-record-modal" data-portal-dialog data-managed-dialog role="dialog" aria-modal="true" aria-labelledby="srRecordTitle"><div class="pd-card"><header class="pd-header"><span class="pd-heading-icon" aria-hidden="true"><i class="fas fa-address-card"></i></span><div class="pd-heading-copy"><p class="sr-eyebrow">STUDENT RECORD</p><h2 id="srRecordTitle">Student record</h2><p>Student information, academic assignment and all saved PDS school years.</p></div><button type="button" class="pd-close" aria-label="Close student record" data-dialog-close="studentRecordModal">×</button></header><div class="pd-body" id="srRecordContent" aria-live="polite"></div><footer class="pd-footer"><button type="button" class="pd-button" data-dialog-close="studentRecordModal">Close</button><button type="button" class="pd-button pd-button-primary" id="srRecordAssign" hidden>Assign academics</button></footer></div></div>
+<div id="studentPdsModal" class="pd-overlay hidden" data-portal-dialog data-managed-dialog role="dialog" aria-modal="true" aria-labelledby="srPdsTitle"><div class="pd-card pd-card-wide pds-paper-modal"><header class="pd-header"><div class="pd-heading-copy"><h2 id="srPdsTitle">Current personal data sheet</h2><p>Saved annual records and earlier revisions are available in the student record.</p></div><button type="button" class="pd-button" id="srPdsPrint">Print PDS</button><button type="button" class="pd-close" aria-label="Close student personal data sheet" onclick="closeStudentPds()">×</button></header><div class="pd-body pds-paper-modal-body"><div class="pds-document-toolbar"><label>Paper <select data-pds-paper-select aria-label="PDS paper size"><option value="long">Long bond (8.5 × 13 in)</option><option value="a4">A4</option><option value="letter">Letter</option></select></label><button type="button" data-pds-zoom="fit" aria-pressed="true">Fit width</button><button type="button" data-pds-zoom="actual" aria-pressed="false">Actual size</button></div><p class="pds-paper-status" data-pds-status role="status"></p><div class="pds-document-viewport" id="srPdsContent"></div></div></div></div>
 
 
 <script>
@@ -357,4 +358,4 @@ function changePage(delta) { currentPage += delta; fetchStudents(); }
 fetchStudents();
 </script>
 
-<script src="../assets/js/student-record-actions.js?v=20261028-1"></script>
+<script src="../assets/js/student-record-actions.js?v=20261029-history"></script>

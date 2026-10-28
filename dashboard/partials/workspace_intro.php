@@ -1,6 +1,8 @@
 <?php
 // Each destination explains its purpose before presenting its records and controls.
 $counselor_pages=[
+ 'approvals'=>['Administration','Report approvals','Review one-time print and export permissions.','fa-clipboard-check','settings'],
+ 'advocate_activity'=>['Administration','Advocate activity','Review records accessed, saved changes, posts and approved outputs.','fa-user-clock','settings'],
  'reports'=>['Reports','Reports & insights','Prepare filtered school reports and exports.','fa-chart-simple','reports'],
  'examinee_reports'=>['Reports','Examinee reports','Review examination outcomes and printable lists.','fa-clipboard-check','reports'],
  'reports'=>['Reports','Reports & insights','Prepare filtered school reports and exports.','fa-chart-simple','reports'],

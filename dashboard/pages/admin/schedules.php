@@ -1,4 +1,5 @@
 <?php
+if(!defined('IN_LAYOUT')){http_response_code(403);exit;}
 require_once __DIR__ . '/../../../classes/Schedule.php';
 require_once __DIR__ . '/../../../classes/Holiday.php';
 require_once __DIR__ . '/../../../classes/DailyBookingLimit.php';
@@ -766,3 +767,5 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <script src="../assets/js/schedules-workspace.js?v=20261028-10">
 </script>
+
+<link rel="stylesheet" href="../assets/css/portal-calendars.css?v=20261029-shared">

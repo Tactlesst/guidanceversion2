@@ -1,0 +1,69 @@
+/* Admin calendar-focus.css parity, scoped to the student booking calendar. */
+#studentBookingWorkspace .scb-columns{grid-template-columns:minmax(0,1fr) 275px;gap:18px}
+#studentBookingWorkspace .scb-summary{margin:0 0 12px;gap:10px}
+#studentBookingWorkspace .scb-summary>article{padding:10px 14px;gap:10px}
+#studentBookingWorkspace .scb-summary strong{font-size:21px}
+#studentBookingWorkspace .scb-summary span:not(.scb-stat-icon){font-size:11px;margin:3px 0 0}
+#studentBookingWorkspace .scb-summary small{display:none}
+#studentBookingWorkspace .scb-stat-icon{width:32px;height:32px;font-size:18px;border-radius:8px}
+#studentBookingWorkspace .scb-filters summary{padding:10px 15px;min-height:42px}
+#studentBookingWorkspace .scb-scope{margin:10px 0;color:#49667f;font-size:11px}
+#studentBookingWorkspace .scb-scope>span{color:#62788d;font-size:10px}
+#studentBookingWorkspace .scb-calendar-card{border-color:#b8cbdc;box-shadow:0 3px 16px #173e6310;border-radius:12px}
+#studentBookingWorkspace .scb-month-header{background:#f2f7fc;padding:17px 19px;border-top:4px solid #24577c;gap:12px}
+#studentBookingWorkspace .scb-month-header h2{font-size:25px;color:#173e61;letter-spacing:-.5px;font-weight:700}
+#studentBookingWorkspace .scb-month-header .scb-eyebrow{font-size:10px;color:#506e88;letter-spacing:1.1px}
+#studentBookingWorkspace .scb-month-actions a{border-color:#b9cddd;color:#264f72;background:#fff;min-width:38px;min-height:40px}
+#studentBookingWorkspace .scb-month-actions a.scb-today-link{font-size:12px;font-weight:600}
+#studentBookingWorkspace .scb-view-switch{border-color:#c4d4e3;background:#e5edf5}
+#studentBookingWorkspace .scb-view-switch button{color:#506a83}
+#studentBookingWorkspace .scb-view-switch button[aria-pressed=true]{background:#24577c;color:#fff}
+#studentBookingWorkspace .scb-calendar{border-color:#bfcede}
+#studentBookingWorkspace .scb-weekdays{background:#e9f0f7;color:#3c5874;font-size:12px;font-weight:700}
+#studentBookingWorkspace .scb-weekdays span{padding:11px 0}
+#studentBookingWorkspace .scb-weekdays span:first-child{color:#9b4c52}
+#studentBookingWorkspace .scb-day{border-color:#ccdae6;padding:7px;min-height:100px}
+#studentBookingWorkspace .scb-day-empty{background:#edf2f7}
+#studentBookingWorkspace .scb-day.scb-past:not(.scb-closed){background:#fff}
+#studentBookingWorkspace .scb-day.scb-closed{background:#fcf1f1}
+#studentBookingWorkspace .scb-day-top{font-size:15px!important;color:#294d6b;min-height:33px!important;margin-bottom:4px}
+#studentBookingWorkspace .scb-day-top>span{width:30px;height:30px;font-weight:700}
+#studentBookingWorkspace .scb-day-top small{font-size:10px;color:#187267}
+#studentBookingWorkspace .scb-closed .scb-day-top{color:#9b5559}
+#studentBookingWorkspace .scb-day-top small.scb-closed-label{font-size:9px;color:#9b5559;font-weight:500}
+#studentBookingWorkspace [data-scb-date][aria-pressed=true]{background:#eaf7f2!important;box-shadow:inset 0 0 0 3px #1c8273}
+#studentBookingWorkspace .scb-day.scb-closed[data-scb-date][aria-pressed=true]{background:#fae8e8!important;box-shadow:inset 0 0 0 3px #af666b}
+#studentBookingWorkspace .scb-today .scb-day-top>span{background:#18776e;color:#fff}
+#studentBookingWorkspace .scb-day:not(.scb-closed):not(.scb-day-empty):hover{background:#f0f7fc}
+#studentBookingWorkspace .scb-event{font-size:11px!important;min-height:26px!important;padding:4px 6px}
+#studentBookingWorkspace .scb-limit{font-size:9px;color:#805b13;background:#fff4d7}
+#studentBookingWorkspace .scb-more{font-size:10px!important;color:#3b6380}
+#studentBookingWorkspace .scb-calendar-footer{font-size:11px;color:#4f6b84;background:#f6f9fc;border-color:#ccdae6;padding:11px 16px}
+.scb-calendar-guide{display:flex;gap:15px;flex-wrap:wrap;align-items:center}
+.scb-calendar-guide>span{display:inline-flex;align-items:center;gap:6px}
+.scb-calendar-guide .scb-key{display:inline-block;width:9px;height:9px;border-radius:3px;background:#f8dddd;border:1px solid #bc7c81}
+.scb-calendar-guide .scb-key-today{background:#18776e;border-color:#18776e;border-radius:50%}
+.scb-calendar-guide .scb-key-selected{background:#eaf7f2;border:2px solid #1c8273}
+#studentBookingWorkspace .scb-calendar-footer .scb-calendar-tip{margin-left:auto;font-size:10px;color:#5b758e}
+.scb-month-note{font-size:11px;line-height:1.5;color:#56718b;margin:6px 0 0}
+#studentBookingWorkspace .scb-day-panel{border-color:#d1dee9}
+#studentBookingWorkspace .scb-day-panel-heading .scb-eyebrow{color:#5c778f}
+@media(min-width:1400px){#studentBookingWorkspace .scb-columns{grid-template-columns:minmax(0,1fr) 265px;gap:18px}}
+@media(min-width:1200px) and (max-height:850px){#studentBookingWorkspace .scb-day{min-height:86px}#studentBookingWorkspace .scb-month-header{padding:13px 17px}#studentBookingWorkspace .scb-weekdays span{padding:9px 0}}
+@media(max-width:700px){#studentBookingWorkspace .scb-summary>article{padding:9px;gap:0}#studentBookingWorkspace .scb-summary strong{font-size:18px}#studentBookingWorkspace .scb-summary span:not(.scb-stat-icon){font-size:10px;line-height:1.5}#studentBookingWorkspace .scb-scope{gap:3px;margin:8px 0}#studentBookingWorkspace .scb-month-header{padding:14px 12px}#studentBookingWorkspace .scb-month-header h2{font-size:23px}#studentBookingWorkspace .scb-month-actions{gap:8px}#studentBookingWorkspace .scb-month-actions a{min-width:35px;padding:4px 9px}#studentBookingWorkspace .scb-month-actions a.scb-today-link{font-size:11px}#studentBookingWorkspace .scb-calendar{min-width:0;width:100%}#studentBookingWorkspace #scbCalendar{overflow-x:hidden}#studentBookingWorkspace .scb-weekdays{font-size:10px}#studentBookingWorkspace .scb-weekdays span{padding:10px 0}#studentBookingWorkspace .scb-day{padding:3px;min-height:84px}#studentBookingWorkspace .scb-day-top{font-size:13px!important;min-height:32px!important;justify-content:center;flex-wrap:wrap;gap:0}#studentBookingWorkspace .scb-day-top>span{width:29px;height:29px}#studentBookingWorkspace .scb-day-top small{font-size:7px;width:100%;text-align:center;line-height:1.3}#studentBookingWorkspace .scb-day-top small.scb-closed-label{font-size:7px}#studentBookingWorkspace .scb-event{height:9px;min-height:9px!important;padding:0;border-radius:3px;font-size:0!important;line-height:0;border-left:4px solid #498b6b}#studentBookingWorkspace .scb-event[data-scb-entry-type=entrance_exam]{border-color:#287b8b}#studentBookingWorkspace .scb-event[data-scb-entry-type=pds_period]{border-color:#8058a1}#studentBookingWorkspace .scb-event[data-scb-entry-type=counseling]{border-color:#3b6eab}#studentBookingWorkspace .scb-event[data-scb-entry-type=holiday]{border-color:#b25965}#studentBookingWorkspace .scb-limit{font-size:0;height:5px;min-height:5px;padding:0;border-radius:2px;background:#dbb85e}#studentBookingWorkspace .scb-my-badge{font-size:8px!important;line-height:1.4;min-height:20px!important;padding:2px 0;text-align:center;overflow:hidden}#studentBookingWorkspace .scb-more{font-size:8px!important;padding:2px 0;min-height:20px!important}#studentBookingWorkspace .scb-calendar-footer{padding:11px 12px;display:block}#studentBookingWorkspace .scb-calendar-guide{gap:12px;font-size:10px}#studentBookingWorkspace .scb-calendar-footer .scb-calendar-tip{display:block;font-size:10px;margin:9px 0 0;line-height:1.6}.scb-month-note{font-size:10px}#studentBookingWorkspace .scb-day-panel{margin-top:0}}
+@media(prefers-reduced-motion:no-preference){#studentBookingWorkspace .scb-day{transition:background-color .1s ease}}
+
+#studentBookingWorkspace{max-width:1280px;margin-left:auto;margin-right:auto}
+#studentBookingWorkspace .scb-days{background:#ccdae6;gap:1px}
+#studentBookingWorkspace .scb-day-empty{cursor:default}
+#studentBookingWorkspace .scb-weekdays span{font:inherit;color:inherit}
+#studentBookingWorkspace .scb-day-top small{display:inline}
+#studentBookingWorkspace .scb-calendar-card .scb-month-actions{width:auto}
+#studentBookingWorkspace .scb-calendar-card .scb-month-header{flex-wrap:nowrap}
+#studentBookingWorkspace .scb-calendar-footer .scb-calendar-guide{margin:0}
+@media(max-width:1150px){#studentBookingWorkspace .scb-columns{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:700px){#studentBookingWorkspace .scb-calendar-card .scb-month-header{flex-wrap:wrap}#studentBookingWorkspace .scb-calendar-card .scb-month-actions{width:100%;justify-content:space-between}#studentBookingWorkspace .scb-day-top small{display:block}#studentBookingWorkspace .scb-calendar-footer{display:block}}
+
+#studentBookingWorkspace .scb-month-actions a{font-size:21px;padding:4px 10px}
+#studentBookingWorkspace .scb-month-actions a.scb-today-link{font-size:12px;font-weight:600}
+#studentBookingWorkspace .scb-view-switch button{min-height:34px;padding:6px 10px;font-size:11px}

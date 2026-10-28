@@ -20,23 +20,6 @@ function toggleStudentFields() {
     document.getElementById('positionField').style.display = ['admin','guidance_advocate','super_admin'].includes(role) ? 'block' : 'none';
 }
 
-function toggleExamineeConversion() {
-    document.getElementById('examineeFields').classList.toggle('hidden', !document.getElementById('convertExaminee').checked);
-}
-
-function fillExamineeData() {
-    const sel = document.getElementById('examineeSelect');
-    const opt = sel.options[sel.selectedIndex];
-    if (opt.value) {
-        document.getElementById('create_first_name').value = opt.dataset.first || '';
-        document.getElementById('create_middle_name').value = opt.dataset.middle || '';
-        document.getElementById('create_last_name').value = opt.dataset.last || '';
-        document.getElementById('create_email').value = opt.dataset.email || '';
-        document.getElementById('createRole').value = 'student';
-        toggleStudentFields();
-    }
-}
-
 function editUser(data) {
     document.getElementById('edit_user_id').value = data.id;
     document.getElementById('edit_first_name').value = data.first_name || '';

@@ -5,8 +5,10 @@ if (session_status() == PHP_SESSION_NONE) {
     if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
         ini_set('session.cookie_secure', 1);
     }
+    $sessionApp = require __DIR__ . '/../config/app.php';
+    $sessionBasePath = rtrim((string)(parse_url($sessionApp['base_url'], PHP_URL_PATH) ?? ''), '/') . '/';
     session_set_cookie_params([
-        'lifetime' => 0, 'path' => '/guidanceversion2/', 'domain' => '',
+        'lifetime' => 0, 'path' => $sessionBasePath, 'domain' => '',
         'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
         'httponly' => true, 'samesite' => 'Strict'
     ]);
@@ -38,6 +40,18 @@ if (session_status() == PHP_SESSION_NONE) {
             $_SESSION['IP_ADDRESS'] = $_SERVER['REMOTE_ADDR'] ?? '';
         }
     }
+}
+
+// A completed password reset, email change or account conversion invalidates old sessions.
+if(isset($_SESSION['user_id'])){
+    try{
+        require_once __DIR__.'/../config/database.php';$sessionDb=(new Database)->getConnection();
+        $sessionCheck=$sessionDb->prepare('SELECT auth_version,role,is_active,archived,email FROM users WHERE id=?');$sessionCheck->execute([$_SESSION['user_id']]);$sessionAccount=$sessionCheck->fetch(PDO::FETCH_ASSOC);
+        $sessionVersion=(int)($_SESSION['auth_version']??0);
+        if(!$sessionAccount||!(int)$sessionAccount['is_active']||(int)$sessionAccount['archived']||$sessionVersion!==(int)$sessionAccount['auth_version']){
+            $_SESSION=[];session_regenerate_id(true);$_SESSION['auth_notice']='Your account security changed. Please sign in again.';
+        }else{$_SESSION['auth_version']=(int)$sessionAccount['auth_version'];$_SESSION['role']=$sessionAccount['role'];$_SESSION['user_role']=$sessionAccount['role'];$_SESSION['user_email']=$sessionAccount['email'];}
+    }catch(Throwable $e){unset($_SESSION['user_id']);$_SESSION['auth_notice']='Account verification is temporarily unavailable. Please sign in again.';}
 }
 
 function checkLogin() {

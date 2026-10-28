@@ -1,10 +1,13 @@
 <?php
 
-require_once __DIR__ . '/NotificationService.php';
+require_once __DIR__ . '/NotificationService.php';require_once __DIR__.'/SubmissionNotifications.php';
 require_once __DIR__ . '/DailyBookingLimit.php';
 require_once __DIR__.'/SchoolClosure.php';
 
 class CounselingAppointment {
+    // Student counseling uses regular office slots; an availability event is not required.
+    public const BOOKING_TIMES = ['08:00:00','09:00:00','10:00:00','11:00:00','13:00:00','14:00:00','15:00:00','16:00:00'];
+    public const MAX_PER_TIME = 1;
     private $conn;
     private $table_name = "counseling_appointments";
 
@@ -30,6 +33,8 @@ class CounselingAppointment {
     }
 
     public function create() {
+        $owned=!$this->conn->inTransaction();if($owned)$this->conn->beginTransaction();else $this->conn->exec('SAVEPOINT counseling_create');
+        try{
         $is_followup = isset($this->is_follow_up) && $this->is_follow_up == 1;
 
         // Auto-confirm all appointments (matches old guidance behavior)
@@ -69,11 +74,13 @@ class CounselingAppointment {
             $appointment_id = $this->conn->lastInsertId();
 
             // Send automatic confirmation notification
-            $this->createAutoConfirmationNotification($appointment_id);
+            SubmissionNotifications::appointment($this->conn,'counseling',(int)$appointment_id);
+            if($owned)$this->conn->commit();else $this->conn->exec('RELEASE SAVEPOINT counseling_create');
 
             return $appointment_id;
         }
-        return false;
+        if($owned)$this->conn->rollBack();else $this->conn->exec('ROLLBACK TO SAVEPOINT counseling_create');return false;
+        }catch(Throwable $e){if($owned&&$this->conn->inTransaction())$this->conn->rollBack();elseif(!$owned)$this->conn->exec('ROLLBACK TO SAVEPOINT counseling_create');throw $e;}
     }
 
     /** Serialize capacity checks and student booking inserts so the last slot cannot be overbooked. */
@@ -81,19 +88,64 @@ class CounselingAppointment {
         $date=$this->appointment_date;
         $parsed=is_string($date)?DateTimeImmutable::createFromFormat('!Y-m-d',$date):false;
         if(!$parsed||$parsed->format('Y-m-d')!==$date)throw new InvalidArgumentException('Please select a valid appointment date.');
+        if($date<=date('Y-m-d'))throw new InvalidArgumentException('Appointments must be planned in advance. Please choose tomorrow or a later date.');
+        if($parsed->format('w')==='0')throw new RuntimeException('The guidance office is closed on Sundays. Please choose another date.');
+        if(!in_array($this->appointment_time,self::BOOKING_TIMES,true))throw new InvalidArgumentException('Please select a regular counseling time slot.');
         $locked=$this->conn->query("SELECT GET_LOCK('guidanceversion2_counseling_booking',5)")->fetchColumn();
         if(!$locked)throw new RuntimeException('Booking is busy. Please try again.');
         $ownsTransaction=!$this->conn->inTransaction();
         try{
             if($ownsTransaction)$this->conn->beginTransaction();
             if($closure=(new SchoolClosure($this->conn))->forDate($date))throw new RuntimeException('School closed: '.$closure['reason'].'. Please choose another date.');
+            // Recheck inside the booking lock so simultaneous requests cannot bypass limits.
+            if($this->hasActiveAppointment($this->user_id))throw new RuntimeException('You already have an active appointment. Please complete or cancel it before booking another.');
+            $holidayColumns=$this->conn->query('SHOW COLUMNS FROM holidays')->fetchAll(PDO::FETCH_COLUMN);
+            $holidayColumn=in_array('date',$holidayColumns,true)?'date':'holiday_date';
+            $holiday=$this->conn->prepare("SELECT 1 FROM holidays WHERE `$holidayColumn`=? LIMIT 1");
+            $holiday->execute([$date]);
+            if($holiday->fetchColumn())throw new RuntimeException('The guidance office is closed for a holiday. Please choose another date.');
+            $holiday=$this->conn->prepare("SELECT 1 FROM schedules WHERE event_type='holiday' AND is_active=1 AND DATE(start_datetime)<=? AND DATE(end_datetime)>=? LIMIT 1");
+            $holiday->execute([$date,$date]);
+            if($holiday->fetchColumn())throw new RuntimeException('The guidance office is closed for a holiday. Please choose another date.');
             $capacity=(new DailyBookingLimit($this->conn))->isDailyLimitReached($date);
             if($capacity['is_reached'])throw new RuntimeException('The daily counseling booking limit has been reached for this date. Please choose another date.');
+            if($this->slotConflictCount($date,$this->appointment_time,(int)($this->session_duration??60))>=self::MAX_PER_TIME)throw new RuntimeException('This time is already booked. Please choose another time.');
             $id=$this->create();
             if(!$id)throw new RuntimeException('Your appointment could not be saved. Please try again.');
             if($ownsTransaction)$this->conn->commit();
             return $id;
         }catch(Throwable $e){if($ownsTransaction&&$this->conn->inTransaction())$this->conn->rollBack();throw $e;}
+        finally{$this->conn->query("SELECT RELEASE_LOCK('guidanceversion2_counseling_booking')");}
+    }
+
+    /** Count occupied sessions overlapping the requested interval; end boundaries may touch. */
+    public function slotConflictCount(string $date,string $time,int $duration=60,int $excludeId=0):int {
+        $q=$this->conn->prepare("SELECT COUNT(*) FROM counseling_appointments WHERE appointment_date=? AND status IN ('pending','confirmed','in_progress') AND id<>? AND TIME_TO_SEC(appointment_time)<TIME_TO_SEC(?)+? AND TIME_TO_SEC(appointment_time)+CASE WHEN session_duration>0 THEN session_duration ELSE 60 END*60>TIME_TO_SEC(?)");
+        $q->execute([$date,$excludeId,$time,max(1,$duration)*60,$time]);return (int)$q->fetchColumn();
+    }
+    /** Only aggregate occupied-slot counts are passed to the student calendar. */
+    public function slotCountsForRange(string $start,string $end):array {
+        $q=$this->conn->prepare("SELECT appointment_date,appointment_time,session_duration FROM counseling_appointments WHERE appointment_date BETWEEN ? AND ? AND status IN ('pending','confirmed','in_progress')");$q->execute([$start,$end]);$out=[];
+        foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row){$parts=explode(':',$row['appointment_time']);$from=(int)$parts[0]*3600+(int)$parts[1]*60+(int)($parts[2]??0);$until=$from+((int)$row['session_duration']>0?(int)$row['session_duration']:60)*60;
+            foreach(self::BOOKING_TIMES as $slot){$parts=explode(':',$slot);$slotFrom=(int)$parts[0]*3600+(int)$parts[1]*60;if($from<$slotFrom+3600&&$until>$slotFrom)$out[$row['appointment_date']][$slot]=($out[$row['appointment_date']][$slot]??0)+1;}
+        }return $out;
+    }
+    /** Staff schedule changes share the student booking lock and interval checks. */
+    public function saveStaffSchedule(int $appointmentId,string $date,string $time,bool $followup,int $actor):array {
+        $parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date);if(!$parsed||$parsed->format('Y-m-d')!==$date)throw new InvalidArgumentException('Choose a valid appointment date.');
+        if(!preg_match('/^([01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?$/',$time))throw new InvalidArgumentException('Choose a valid appointment time.');
+        $locked=$this->conn->query("SELECT GET_LOCK('guidanceversion2_counseling_booking',5)")->fetchColumn();if(!$locked)throw new RuntimeException('Booking is busy. Please try again.');$owns=!$this->conn->inTransaction();
+        try{
+            if($owns)$this->conn->beginTransaction();
+            $q=$this->conn->prepare('SELECT * FROM counseling_appointments WHERE id=? FOR UPDATE');$q->execute([$appointmentId]);$parent=$q->fetch(PDO::FETCH_ASSOC);if(!$parent)throw new RuntimeException('Appointment not found.');require_once __DIR__.'/OfficePolicy.php';$operator=OfficePolicy::actor($this->conn,$actor);if($operator['role']==='guidance_advocate'&&(!$followup||(int)$parent['assigned_advocate_id']!==$actor))throw new RuntimeException('You can add follow-ups only to your own sessions.');
+            if(!$followup&&$parent['appointment_date']===$date&&substr($parent['appointment_time'],0,5)===substr($time,0,5)){if($owns)$this->conn->commit();return ['id'=>$appointmentId,'user_id'=>(int)$parent['user_id']];}
+            if($closure=(new SchoolClosure($this->conn))->forDate($date))throw new RuntimeException('School closed: '.$closure['reason'].'. Choose another date.');
+            $duration=$followup?60:((int)$parent['session_duration']>0?(int)$parent['session_duration']:60);
+            if($this->slotConflictCount($date,$time,$duration,$followup?0:$appointmentId)>=self::MAX_PER_TIME)throw new RuntimeException('This time is already booked. Please choose another time.');
+            if($followup){$q=$this->conn->prepare("INSERT INTO counseling_appointments(user_id,appointment_date,appointment_time,concern_type,concern_description,urgency_level,status,assigned_advocate_id,is_follow_up,parent_appointment_id,session_duration,created_at) VALUES(?,?,?,'Follow-up','Follow-up session','normal','confirmed',?,1,?,60,NOW())");$q->execute([$parent['user_id'],$date,$time,$actor,$appointmentId]);$newId=(int)$this->conn->lastInsertId();$this->conn->prepare("UPDATE counseling_appointments SET status='completed',updated_at=NOW() WHERE id=?")->execute([$appointmentId]);}
+            else{$this->conn->prepare('UPDATE counseling_appointments SET appointment_date=?,appointment_time=?,updated_at=NOW() WHERE id=?')->execute([$date,$time,$appointmentId]);$newId=$appointmentId;}
+            SubmissionNotifications::change($this->conn,'counseling',(int)$newId,$followup?'followup':'rescheduled');if($owns)$this->conn->commit();return ['id'=>$newId,'user_id'=>(int)$parent['user_id']];
+        }catch(Throwable $e){if($owns&&$this->conn->inTransaction())$this->conn->rollBack();throw $e;}
         finally{$this->conn->query("SELECT RELEASE_LOCK('guidanceversion2_counseling_booking')");}
     }
 
@@ -230,29 +282,17 @@ class CounselingAppointment {
         return $stmt;
     }
 
-    public function updateStatus($id, $status) {
-        $query = "UPDATE " . $this->table_name . " SET status = ?";
-        $params = [$status];
-        if ($status === 'confirmed') { $query .= ", confirmed_at = NOW()"; }
-        $query .= " WHERE id = ?";
-        $params[] = $id;
-        $stmt = $this->conn->prepare($query);
-        return $stmt->execute($params);
+    public function updateStatus($id,$status,?int $actorId=null) {
+        if(!in_array($status,['pending','confirmed','in_progress','completed','cancelled','missed'],true))throw new InvalidArgumentException('Choose a valid appointment status.');$owns=!$this->conn->inTransaction();if($owns)$this->conn->beginTransaction();
+        try{$q=$this->conn->prepare('SELECT status,assigned_advocate_id FROM counseling_appointments WHERE id=? FOR UPDATE');$q->execute([$id]);$locked=$q->fetch(PDO::FETCH_ASSOC);$before=$locked?$locked['status']:false;if($actorId!==null){require_once __DIR__.'/OfficePolicy.php';$actor=OfficePolicy::actor($this->conn,$actorId);if($actor['role']==='guidance_advocate'&&(!$locked||(int)$locked['assigned_advocate_id']!==$actorId||!in_array($status,['in_progress','completed','missed'],true)))throw new RuntimeException('You can work only on your assigned sessions.');}if($before===false){if($owns)$this->conn->rollBack();return false;}if($before!==$status){$this->conn->prepare('UPDATE counseling_appointments SET status=?,updated_at=NOW()'.($status==='confirmed'?',confirmed_at=NOW()':'').' WHERE id=?')->execute([$status,$id]);SubmissionNotifications::change($this->conn,'counseling',(int)$id,$status);}if($owns)$this->conn->commit();return true;
+        }catch(Throwable $e){if($owns&&$this->conn->inTransaction())$this->conn->rollBack();throw $e;}
     }
-
-    public function assignAdvocate($id, $advocate_id) {
-        $stmt = $this->conn->prepare("UPDATE " . $this->table_name . " SET assigned_advocate_id = ? WHERE id = ?");
-        return $stmt->execute([$advocate_id, $id]);
+    public function assignAdvocate($id,$advocate_id,?int $actorId=null) {
+        $owns=!$this->conn->inTransaction();if($owns)$this->conn->beginTransaction();
+        try{$q=$this->conn->prepare('SELECT assigned_advocate_id,status FROM counseling_appointments WHERE id=? FOR UPDATE');$q->execute([$id]);$before=$q->fetch(PDO::FETCH_ASSOC);if(!$before)throw new RuntimeException('Appointment unavailable.');if($actorId!==null){require_once __DIR__.'/OfficePolicy.php';$actor=OfficePolicy::actor($this->conn,$actorId);if($actor['role']==='guidance_advocate'&&((int)$advocate_id!==$actorId||!empty($before['assigned_advocate_id'])||!in_array($before['status'],['pending','confirmed'],true)))throw new RuntimeException('You may claim only an unassigned appointment for yourself.');}$q=$this->conn->prepare("SELECT id FROM users WHERE id=? AND role IN ('admin','guidance_advocate') AND is_active=1 AND COALESCE(archived,0)=0");$q->execute([$advocate_id]);if(!$q->fetchColumn())throw new RuntimeException('Choose an active guidance counselor or advocate.');if((int)$before['assigned_advocate_id']!==(int)$advocate_id){$this->conn->prepare('UPDATE counseling_appointments SET assigned_advocate_id=? WHERE id=?')->execute([$advocate_id,$id]);SubmissionNotifications::assigned($this->conn,(int)$id,(int)$advocate_id);}if($owns)$this->conn->commit();return true;
+        }catch(Throwable $e){if($owns&&$this->conn->inTransaction())$this->conn->rollBack();throw $e;}
     }
-
-    public function cancelAppointment($id) {
-        $stmt = $this->conn->prepare("UPDATE " . $this->table_name . " SET status = 'cancelled', updated_at = NOW() WHERE id = ?");
-        if ($stmt->execute([$id])) {
-            $this->createAppointmentNotification($id, 'appointment_cancelled');
-            return true;
-        }
-        return false;
-    }
+    public function cancelAppointment($id){return $this->updateStatus($id,'cancelled');}
 
     public function completeAppointment($id, $remarks = null) {
         try {
@@ -273,8 +313,7 @@ class CounselingAppointment {
                 }
             }
 
-            $this->conn->commit();
-            $this->createAppointmentNotification($id, 'appointment_completed');
+            SubmissionNotifications::change($this->conn,'counseling',(int)$id,'completed');$this->conn->commit();
             return true;
         } catch (Exception $e) {
             $this->conn->rollback();

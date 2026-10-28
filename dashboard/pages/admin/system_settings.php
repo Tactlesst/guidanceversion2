@@ -1,13 +1,14 @@
 <?php
 if(!defined('IN_LAYOUT')||!in_array($role??'',['admin','super_admin'],true)){http_response_code(403);return;}
 $_SESSION['office_settings_csrf']=$_SESSION['office_settings_csrf']??bin2hex(random_bytes(32));
+if(($_GET['section']??'')==='delivery'||isset($_POST['save_mail_settings'])||isset($_POST['save_website_settings'])){require __DIR__.'/../../../includes/mail_settings_view.php';return;}
 $settingsSection=($_GET['section']??'')==='activity'?'activity':'settings';
 
 require_once __DIR__ . '/../../../classes/SystemSettings.php';
 
 $settings = new SystemSettings($db);
 if($settingsSection==='activity'){
- echo '<link rel="stylesheet" href="../assets/css/staff-activity.css?v=20261028-1"><nav class="st-tabs" aria-label="System settings sections"><a href="layout.php?page=system_settings">Office settings</a><a href="layout.php?page=system_settings&amp;section=activity" aria-current="page">Staff activity</a></nav>';
+ echo '<link rel="stylesheet" href="../assets/css/staff-activity.css?v=20261028-1"><nav class="st-tabs" aria-label="System settings sections"><a href="layout.php?page=system_settings">Office settings</a><a href="layout.php?page=system_settings&amp;section=activity" aria-current="page">Staff activity</a><a href="layout.php?page=system_settings&amp;section=delivery">Email &amp; notifications</a></nav>';
  require __DIR__.'/../../../includes/staff_activity_panel.php';return;
 }
 
@@ -45,7 +46,7 @@ if ($all_settings) { while ($s = $all_settings->fetch(PDO::FETCH_ASSOC)) $settin
 ?>
 
 <link rel="stylesheet" href="../assets/css/staff-activity.css?v=20261028-1">
-<nav class="st-tabs" aria-label="System settings sections"><a href="layout.php?page=system_settings" aria-current="page">Office settings</a><a href="layout.php?page=system_settings&amp;section=activity"><i class="fas fa-clock-rotate-left" aria-hidden="true"></i> Staff activity</a></nav>
+<nav class="st-tabs" aria-label="System settings sections"><a href="layout.php?page=system_settings" aria-current="page">Office settings</a><a href="layout.php?page=system_settings&amp;section=activity"><i class="fas fa-clock-rotate-left" aria-hidden="true"></i> Staff activity</a><a href="layout.php?page=system_settings&amp;section=delivery">Email &amp; notifications</a></nav>
 <div class="space-y-6">
     <h1 class="text-2xl font-bold text-gray-800"><i class="fas fa-cogs mr-2 text-primary"></i>System Settings</h1>
 

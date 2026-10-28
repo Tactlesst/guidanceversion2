@@ -4,7 +4,9 @@ require_once '../classes/User.php';
 require_once '../classes/SystemLogger.php';
 require_once '../includes/session.php';
 
-if (isLoggedIn()) { header("Location: ../dashboard/layout.php"); exit(); }
+require_once '../classes/MailLink.php';
+if (isset($_GET['mail'])) $_SESSION['mail_topic'] = MailLink::topic($_GET['mail']);
+if (isLoggedIn()) { header('Location: ' . MailLink::consume($_SESSION, (string)($_SESSION['role'] ?? ''))); exit(); }
 
 // --- Lockout helper ---
 $MAX_ATTEMPTS = 3; $LOCKOUT_SEC = 60;
@@ -21,6 +23,7 @@ function getLockout() {
 }
 
 list($attempts, $remaining_attempts, $lockout_time, $can_attempt) = getLockout();
+$auth_notice=$_SESSION['auth_notice']??'';unset($_SESSION['auth_notice']);
 $error_message = $_SESSION['login_error'] ?? '';
 if (isset($_SESSION['login_error'])) unset($_SESSION['login_error']);
 
@@ -36,14 +39,14 @@ if ($_POST && $can_attempt) {
         header("Location: login.php?error=1"); exit();
     }
 
-    $identifier = $_POST['identifier'] ?? '';
+    $identifier = is_string($_POST['identifier']??null)?trim($_POST['identifier']):'';
     $password = $_POST['password'] ?? '';
 
     if ($user->login($identifier, $password)) {
         // Fetch full user data
-        $stmt = $db->prepare("SELECT u.id, u.email, u.role, u.first_name, u.last_name, u.position, u.grade_level_applying, sp.student_id, sp.grade_level
+        $stmt = $db->prepare("SELECT u.id, u.email, u.auth_version, u.role, u.first_name, u.last_name, u.position, u.grade_level_applying, sp.student_id, sp.grade_level
                               FROM users u LEFT JOIN student_profiles sp ON u.id = sp.user_id
-                              WHERE (u.email = ? OR sp.student_id = ?) AND u.is_active = 1 AND (u.archived = 0 OR u.archived IS NULL)");
+                              WHERE (LOWER(TRIM(u.email)) = LOWER(?) OR sp.student_id = ?) AND u.is_active = 1 AND (u.archived = 0 OR u.archived IS NULL)");
         $stmt->execute([$identifier, $identifier]);
         $ud = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -54,7 +57,7 @@ if ($_POST && $can_attempt) {
 
         session_regenerate_id(true);
         $_SESSION = array_merge($_SESSION, [
-            'user_id' => $ud['id'], 'user_email' => $ud['email'], 'user_role' => $ud['role'],
+            'user_id' => $ud['id'], 'auth_version'=>(int)$ud['auth_version'], 'user_email' => $ud['email'], 'user_role' => $ud['role'],
             'role' => $ud['role'], 'user_name' => $ud['first_name'] . ' ' . $ud['last_name'],
             'first_name' => $ud['first_name'], 'last_name' => $ud['last_name'],
             'position' => $ud['position'], 'student_id' => $ud['student_id'],
@@ -66,7 +69,7 @@ if ($_POST && $can_attempt) {
         $logger->login($ud['id'], ['email' => $ud['email'], 'role' => $ud['role'], 'login_method' => 'web']);
         
         // Redirect to dashboard
-        $redirect_url = '../dashboard/layout.php';
+        $redirect_url = MailLink::consume($_SESSION, (string)$ud['role']);
         
         $show_success = true;
     } else {
@@ -76,7 +79,7 @@ if ($_POST && $can_attempt) {
 
         try {
             // Check if account exists but is archived/inactive
-            $chk = $db->prepare("SELECT u.is_active, u.archived FROM users u LEFT JOIN student_profiles sp ON u.id = sp.user_id WHERE (u.email = ? OR sp.student_id = ?)");
+            $chk = $db->prepare("SELECT u.is_active, u.archived FROM users u LEFT JOIN student_profiles sp ON u.id = sp.user_id WHERE (LOWER(TRIM(u.email)) = LOWER(?) OR sp.student_id = ?)");
             $chk->execute([$identifier, $identifier]);
             if ($chk->rowCount() > 0) {
                 $s = $chk->fetch(PDO::FETCH_ASSOC);
@@ -149,7 +152,8 @@ list($attempts, $remaining_attempts, $lockout_time, $can_attempt) = getLockout()
             </div>
 
             <!-- Error alert -->
-            <?php if ($error_message): ?>
+            <?php if($auth_notice):?><p role="status" class="bg-green-50 text-green-800 rounded-xl px-4 py-3 mb-4"><?=htmlspecialchars($auth_notice,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?></p><?php endif;?>
+<?php if ($error_message): ?>
                 <div class="bg-red-50 text-red-600 rounded-xl px-4 py-3 mb-4 flex items-center justify-between text-sm">
                     <span><i class="fas fa-exclamation-triangle mr-2"></i><?= htmlspecialchars($error_message) ?></span>
                     <button onclick="this.parentElement.remove()" class="text-red-400 hover:text-red-600"><i class="fas fa-times"></i></button>

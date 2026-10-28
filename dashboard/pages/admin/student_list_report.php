@@ -1,4 +1,5 @@
 <?php
+if(!defined('IN_LAYOUT')){http_response_code(403);exit;}
 require_once __DIR__ . '/../../../classes/User.php';
 require_once __DIR__ . '/../../../classes/PersonalDataSheet.php';
 
@@ -90,6 +91,8 @@ try {
 } catch (Exception $e) {}
 ?>
 
+<?php $approvedList=null;if($role==='guidance_advocate'&&!empty($_GET['approval_run'])){require_once __DIR__.'/../../../classes/ReportApproval.php';$r=(new ReportApproval($db))->find((int)$_GET['approval_run'],(int)$uid);if($r&&$r['resource']==='student_list'&&$r['status']==='approved')$approvedList=json_decode($r['scope_json'],true);}?>
+<script type="application/json" id="approvedStudentListOptions"><?=json_encode($approvedList,JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT)?></script>
 <div class="space-y-6" id="studentListBuilder" data-signer="<?=htmlspecialchars(trim(($user_info['first_name']??'').' '.($user_info['middle_name']??'').' '.($user_info['last_name']??'')),ENT_QUOTES)?>">
     <div class="flex items-center justify-between"><h1 data-cw-legacy-title>Student lists &amp; printing</h1></div>
     <section class="bg-white rounded-xl p-4" aria-label="Choose students">

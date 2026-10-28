@@ -35,6 +35,12 @@ $counseling = new CounselingAppointment($db);
 $notification = new Notification($db);
 
 $action = $_POST['action'] ?? $_GET['action'] ?? null;
+require_once __DIR__.'/../classes/OfficePolicy.php';
+$operator=OfficePolicy::actor($db,(int)$_SESSION['user_id']);
+if($operator['role']==='guidance_advocate'){
+    http_response_code(403);echo json_encode(['success'=>false,'error'=>'Use the assigned-session controls in the counseling workspace.']);exit;
+}
+
 $appointment_id = $_POST['appointment_id'] ?? $_GET['appointment_id'] ?? null;
 
 if (!$action) {

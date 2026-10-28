@@ -8,7 +8,7 @@ async function viewResult(type,id){
 }
 function renderAssessmentProfile(data){
     const content=document.getElementById('modalContent');content.replaceChildren();const isMi=data.assessment_type==='mi',identity=apNode('section','ap-student'),copy=apNode('div'),level=apNode('span','ap-level',isMi?'Multiple intelligence':data.level==='intermediate'?'Intermediate inventory':'Standard inventory');copy.append(apNode('strong','',data.student),apNode('p','',data.student_id?'Student ID: '+data.student_id:'Student ID not assigned'));identity.append(copy,level);content.append(identity);
-    const metadata=apNode('dl','ap-meta');for(const [label,value] of [['Submitted',data.submitted],['Grade / year',data.grade_level||'Not assigned']]){const field=apNode('div');field.append(apNode('dt','',label),apNode('dd','',value));metadata.append(field);}content.append(metadata);
+    const metadata=apNode('dl','ap-meta');for(const [label,value] of [['School year',data.school_year||'Not recorded'],['Submitted',data.submitted],['Grade / year',data.grade_level||'Not assigned']]){const field=apNode('div');field.append(apNode('dt','',label),apNode('dd','',value));metadata.append(field);}content.append(metadata);
     const dominant=isMi?data.scores.filter(score=>score.dominant).map(score=>score.name).join(', '):data.dominant_style||data.scores.filter(score=>score.dominant).map(score=>score.name).join(', ');
     const summary=apNode('div','ap-dominant');summary.append(apNode('span','',isMi?'Recorded dominant areas':'Recorded learning preference'),apNode('strong','',dominant||'Not recorded'));content.append(summary);
     const heading=apNode('div','ap-results-heading');heading.append(apNode('h3','',isMi?'Intelligence results':'Learning style results'),apNode('span','','Share of assessment score'));content.append(heading);
@@ -22,10 +22,11 @@ async function printAssessment(){
     if(!currentAssessment)return;const button=document.getElementById('assessmentPrintButton'),status=document.getElementById('assessmentPrintStatus');button.disabled=true;status.textContent='Preparing printout…';
     const previous=document.getElementById('assessmentPrintFrame');if(previous)previous.remove();const frame=document.createElement('iframe');frame.id='assessmentPrintFrame';frame.title='Assessment print document';frame.setAttribute('aria-hidden','true');frame.style.cssText='position:fixed;width:1px;height:1px;left:-10000px;top:0;border:0;';
     try{
-        const loaded=new Promise((resolve,reject)=>{frame.addEventListener('load',resolve,{once:true});frame.addEventListener('error',()=>reject(new Error('Print document unavailable')),{once:true});});frame.src=BASE+'&action=print_profile&type='+encodeURIComponent(currentAssessment.assessment_type)+'&id='+encodeURIComponent(currentAssessment.assessment_id);document.body.appendChild(frame);await loaded;
+        const permission=await window.OfficeApprovals.authorize('assessment',{type:currentAssessment.assessment_type,id:Number(currentAssessment.assessment_id)});
+        const loaded=new Promise((resolve,reject)=>{frame.addEventListener('load',resolve,{once:true});frame.addEventListener('error',()=>reject(new Error('Print document unavailable')),{once:true});});frame.src=BASE+'&action=print_profile&type='+encodeURIComponent(currentAssessment.assessment_type)+'&id='+encodeURIComponent(currentAssessment.assessment_id)+(permission.approval_id?'&approval_id='+permission.approval_id:'');document.body.appendChild(frame);await loaded;
         const doc=frame.contentDocument;if(!doc?.querySelector('[data-assessment-paper]'))throw new Error('Print document unavailable');
         if(doc.fonts?.ready)await doc.fonts.ready;await Promise.all([...doc.images].map(img=>img.complete?Promise.resolve():new Promise(resolve=>{img.addEventListener('load',resolve,{once:true});img.addEventListener('error',resolve,{once:true});})));
         frame.contentWindow.addEventListener('afterprint',()=>frame.remove(),{once:true});frame.contentWindow.focus();frame.contentWindow.print();status.textContent='';
-    }catch(error){frame.remove();status.textContent='The printout could not be prepared. Please try again.';}
-    finally{button.disabled=false;}
+    }catch(error){frame.remove();status.textContent=error.message||'The printout could not be prepared. Please try again.';}
+    finally{button.disabled=false;window.OfficeApprovals?.paint();}
 }

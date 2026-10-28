@@ -1,9 +1,7 @@
 <?php
-$header_notifications=[];$unread_count=0;
-try {
-    $n=$db->prepare('SELECT COUNT(*) FROM notifications WHERE user_id=? AND is_read=0');$n->execute([$uid]);$unread_count=(int)$n->fetchColumn();
-    $n=$db->prepare('SELECT title,message,created_at,is_read FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 5');$n->execute([$uid]);$header_notifications=$n->fetchAll(PDO::FETCH_ASSOC);
-}catch(Exception $e){}
+require_once __DIR__.'/../../classes/NotificationInbox.php';
+$_SESSION['notification_csrf']=$_SESSION['notification_csrf']??bin2hex(random_bytes(32));$header_notifications=[];$unread_count=0;
+try{$headerInbox=new NotificationInbox($db);$headerFeed=$headerInbox->feed((int)$user_info['id']);$header_notifications=$headerFeed['preview'];$unread_count=$headerFeed['unread_count'];}catch(Throwable $e){}
 ?>
 <header class="portal-header">
     <div class="portal-header-left">
@@ -13,12 +11,8 @@ try {
     <div class="portal-header-actions">
         <span class="portal-today"><?=date('D, M j')?></span>
         <div class="portal-menu-anchor">
-            <button type="button" id="notifBtn" class="portal-icon-button" aria-label="Notifications<?=$unread_count?' ('.$unread_count.' unread)':''?>" aria-controls="notifMenu" aria-expanded="false"><i class="far fa-bell" aria-hidden="true"></i><?php if($unread_count):?><span class="portal-notification-dot"></span><?php endif;?></button>
-            <div id="notifMenu" class="portal-popover portal-notifications hidden">
-                <div class="portal-popover-title"><strong>Notifications</strong><span><?=$unread_count?> unread</span></div>
-                <?php foreach($header_notifications as $notification):?><div class="portal-notification-item"><strong><?=htmlspecialchars($notification['title'])?></strong><p><?=htmlspecialchars($notification['message'])?></p><time><?=date('M j, g:i A',strtotime($notification['created_at']))?></time></div><?php endforeach;?>
-                <?php if(!$header_notifications):?><p class="portal-popover-empty">You’re all caught up. New updates will appear here.</p><?php endif;?>
-            </div>
+            <button type="button" id="notifBtn" class="portal-icon-button" aria-label="Notifications (<?=$unread_count?> unread)" aria-controls="notifMenu" aria-expanded="false"><i class="far fa-bell" aria-hidden="true"></i><?php if($unread_count):?><span class="pn-count"><?=$unread_count>99?'99+':$unread_count?></span><?php endif;?></button>
+            <div id="notifMenu" class="portal-popover portal-notifications hidden"><div class="pn-popover-head"><div><strong>Notifications</strong><span data-notification-count><?=$unread_count?> unread</span></div><button type="button" class="pn-small-button" data-notification-read-all>Mark all as read</button></div><div class="pn-preview-list" data-notification-preview><?php foreach($header_notifications as $notification)echo NotificationInbox::item($notification);if(!$header_notifications):?><p class="pn-empty">You’re all caught up. New updates will appear here.</p><?php endif;?></div><a class="pn-popover-footer" href="layout.php?page=notifications">View all notifications</a></div>
         </div>
         <div class="portal-menu-anchor">
             <button type="button" id="accountBtn" class="portal-account-button" aria-label="Account menu" aria-controls="accountMenu" aria-expanded="false"><span class="portal-avatar"><?=htmlspecialchars($initials)?></span><span class="portal-account-name"><?=htmlspecialchars($first_name)?></span><i class="fas fa-chevron-down" aria-hidden="true"></i></button>

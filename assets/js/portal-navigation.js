@@ -79,6 +79,8 @@
         releaseLayout=release;return release;
     }
     function updateShell(page, title, header) {
+        const surveyLink=[...document.querySelectorAll('.portal-nav a[href]')].find(link=>['multiple_intelligence_survey','learning_style_inventory','learning_style_inventory_intermediate'].includes(new URL(link.href).searchParams.get('page')));
+        const navigationPage=page==='survey_history'?(surveyLink?new URL(surveyLink.href).searchParams.get('page'):'dashboard'):page==='pds_history'?(document.querySelector('.portal-nav a[href*="page=view_pds"]')?'view_pds':'admin_view_pds'):page;
         document.title = title + ' - SRCB Guidance';
         document.querySelector('.portal-breadcrumb strong').textContent = page === 'dashboard' ? 'Overview' : title;
         if(header) {
@@ -92,7 +94,7 @@
         }
         for (const link of document.querySelectorAll('.portal-nav a[href]')) {
             const target = new URL(link.href).searchParams.get('page') || 'dashboard';
-            const active = target === page || (['fill_pds', 'view_pds'].includes(target) && ['fill_pds', 'view_pds'].includes(page)) || (target === 'manage_exams' && page === 'release_results');
+            const active = target === navigationPage || (['fill_pds', 'view_pds'].includes(target) && ['fill_pds', 'view_pds'].includes(navigationPage)) || (target === 'manage_exams' && navigationPage === 'release_results');
             link.classList.toggle('is-active', active && link.classList.contains('portal-nav-link'));
             link.classList.toggle('is-current', active && !link.classList.contains('portal-nav-link'));
             if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');

@@ -1,9 +1,10 @@
 <?php
+require_once __DIR__.'/pds_address.php';
 final class PDSPaperDocument {
     public static function text($value): string {
         if (is_array($value)) return implode(', ', array_map([self::class,'text'], $value));
         $value=trim((string)($value??''));
-        if ($value!=='' && ($value[0]==='[' || $value[0]==='{')) { $decoded=json_decode($value,true);if(is_array($decoded))return self::text($decoded); }
+        if ($value!=='' && ($value[0]==='[' || $value[0]==='{')) { $decoded=json_decode($value,true);if(is_array($decoded)&&($decoded['pds_addresses']??null)===1)return PDSAddress::display($value);if(is_array($decoded))return self::text($decoded); }
         return $value;
     }
     public static function e($value): string { return htmlspecialchars(self::text($value),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
@@ -19,6 +20,7 @@ final class PDSPaperDocument {
     public static function baseUrl(): string { $path=str_replace('\\','/',$_SERVER['SCRIPT_NAME']??'');foreach(['/dashboard/','/pds/'] as $marker){$at=strpos($path,$marker);if($at!==false)return substr($path,0,$at).'/';}return '/'.basename(dirname(__DIR__)).'/'; }
     public static function media($value,string $base,string $kind='photo'): string {
         $value=self::text($value);if($value==='')return '';
+        if($kind==='signature')return $base.'pds/signature.php?key='.hash('sha256',$value);
         if(strlen($value)<7000000&&preg_match('~^data:image/(?:png|jpeg|gif|webp);base64,[a-zA-Z0-9+/=\r\n]+$~D',$value))return $value;
         $path=str_replace('\\','/',$value);while(str_starts_with($path,'../'))$path=substr($path,3);
         if(str_contains($path,'..')||preg_match('~^[a-z]+:|^/~i',$path))return '';
@@ -51,7 +53,7 @@ final class PDSPaperDocument {
         $college=in_array(self::normal($get('education_level')),['highered','highereducation','higher education','college'],true);$photo=self::media($get('student_photo'),$base);
         $address=$get('home_address')?:implode(', ',array_filter([$get('city_street'),$get('city_purok'),$get('city_barangay')]));
         ob_start(); ?>
-<div class="pds-form-document" data-pds-document data-paper="long" data-pds-id="<?=$e($data['id']??'')?>" data-pds-style="<?=$e($base)?>assets/css/pds-paper.css?v=20261028-4">
+<div class="pds-form-document" data-pds-document data-paper="long" data-pds-id="<?=$e($data['id']??'')?>" data-pds-style="<?=$e($base)?>assets/css/pds-paper.css?v=20261028-centered">
 <article class="pds-sheet" data-reference-page="1"><div class="pds-page-content">
     <header class="pds-block pds-letterhead" data-pds-block>
         <div class="pds-seals"><img src="<?=$e($base)?>assets/images/srcblogo.png" class="pds-school-seal" alt="SRCB school seal"><img src="<?=$e($base)?>assets/images/logo.jpg" class="pds-guidance-seal" alt="Guidance Center seal"></div>
