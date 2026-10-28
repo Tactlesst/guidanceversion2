@@ -1,162 +1,27 @@
 <?php
-require_once __DIR__ . '/config/database.php';
-
-$db = null;
-$homepage_announcement = null;
-$announcements = [];
-
-try {
-    $db = (new Database())->getConnection();
-    
-    // Featured homepage announcement
-    $stmt = $db->prepare("SELECT a.*, CONCAT(u.first_name, ' ', u.last_name) as creator_name 
-                          FROM announcements a 
-                          LEFT JOIN users u ON a.created_by = u.id 
-                          WHERE a.is_active = 1 AND a.location = '__HOMEPAGE__' 
-                          ORDER BY a.updated_at DESC, a.created_at DESC LIMIT 1");
-    $stmt->execute();
-    $homepage_announcement = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    // Latest announcements
-    $stmt = $db->prepare("SELECT a.*, CONCAT(u.first_name, ' ', u.last_name) as creator_name 
-                          FROM announcements a 
-                          LEFT JOIN users u ON a.created_by = u.id 
-                          WHERE a.is_active = 1 AND a.target_audience IN ('all_users', 'all_students') 
-                          ORDER BY a.created_at DESC LIMIT 20");
-    $stmt->execute();
-    $announcements = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {
-    // Silent fail - page still works without DB
-}
+require_once __DIR__.'/config/database.php';
+require_once __DIR__.'/classes/AnnouncementPublication.php';
+header('Cache-Control: no-store');
+$homepage_announcement=null;$announcements=[];
+try{$db=(new Database())->getConnection();$publication=new AnnouncementPublication($db);$homepage_announcement=$publication->featured();$announcements=$publication->latest($homepage_announcement?(int)$homepage_announcement['id']:null);}catch(Exception $e){error_log('Public announcements could not be loaded.');}
+// Public rendering helpers. Only the selected, explicitly public notices are serialized.
+$homeEscape=static fn($v)=>htmlspecialchars((string)($v??''),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
+$homePreview=static function($text,$limit){$text=preg_replace('/\s+/u',' ',trim($text));return mb_strlen($text)>$limit?mb_substr($text,0,$limit).'…':$text;};
+$homePublicData=[];foreach(array_merge($homepage_announcement?[$homepage_announcement]:[],$announcements) as $a)$homePublicData[]=['id'=>(int)$a['id'],'title'=>$a['title'],'message'=>$a['message'],'category'=>ucwords(str_replace('_',' ',$a['event_type']?:'general')),'date'=>$a['event_date'],'time'=>$a['event_time'],'location'=>$a['location']==='__HOMEPAGE__'?null:$a['location'],'published'=>$a['created_at'],'expires'=>$a['expires_on'],'pinned'=>(bool)$a['is_pinned'],'theme'=>$a['template_theme']];
 ?>
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SRCB Guidance - Announcements</title>
-    <link rel="icon" type="image/x-icon" href="assets/images/srcblogo.ico">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <script>tailwind.config={theme:{extend:{colors:{primary:'#163269','primary-dark':'#3a56c4'}}}}</script>
-    <style>
-        .announcement-message { white-space: pre-wrap; }
-    </style>
-</head>
-<body class="bg-gray-50 text-gray-900">
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Guidance Office · St. Rita’s College of Balingasag</title><link rel="icon" href="assets/images/srcblogo.ico"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"><link rel="stylesheet" href="assets/css/public-home.css?v=20261028-2"><link rel="stylesheet" href="assets/css/announcement-poster.css?v=20261028-2"></head>
+<body class="guidance-home"><a class="home-skip" href="#homeMain">Skip to content</a>
+<header class="home-header"><nav class="home-container home-nav" aria-label="Main navigation"><a class="home-brand" href="homepage.php"><img src="assets/images/srcblogo.png" width="45" height="45" alt="SRCB school seal"><span><strong>St. Rita’s College of Balingasag</strong><small>Guidance Office</small></span></a><div class="home-nav-links"><a href="#services">Our services</a><a href="#announcements">Announcements</a><a class="home-button small" href="auth/login.php">Sign in <i class="fas fa-arrow-right" aria-hidden="true"></i></a></div></nav></header>
+<main id="homeMain"><section class="home-container home-hero" aria-labelledby="homeTitle"><div class="home-hero-copy"><p class="home-eyebrow"><span></span>Care. Support. Growth.</p><h1 id="homeTitle">Support for every step of student life.</h1><p class="home-intro">A welcoming place for counseling, entrance exam applications, and guidance updates. Find the support and information you need, all in one place.</p><div class="home-hero-actions"><a href="auth/login.php" class="home-button primary">Go to your portal <i class="fas fa-arrow-right" aria-hidden="true"></i></a><a href="auth/register.php" class="home-button">Apply for an entrance exam</a></div><p class="home-access-note"><i class="fas fa-lock" aria-hidden="true"></i>Already have an account? Sign in to continue.</p></div>
+<aside class="home-feature" aria-label="Guidance office support"><div class="home-feature-top"><span class="home-feature-icon"><i class="fas fa-comments" aria-hidden="true"></i></span><span>Here to help</span></div><h2>Start with a conversation.</h2><p>Your Guidance Office helps you navigate academic concerns, personal challenges, and your next steps in school.</p><div class="home-feature-steps"><span><b>1</b>Sign in to your account</span><span><b>2</b>Choose the service you need</span><span><b>3</b>Find an available appointment</span></div><a href="#announcements">Explore guidance updates <i class="fas fa-arrow-down" aria-hidden="true"></i></a></aside>
+</section>
+<section class="home-container home-services" id="services" aria-labelledby="servicesTitle"><div class="home-section-heading"><div><p class="home-eyebrow">How we can help</p><h2 id="servicesTitle">Your guidance services</h2></div><p>Choose where you’d like to begin.</p></div><div class="home-service-grid"><a class="home-service" href="auth/login.php"><span class="home-service-icon"><i class="far fa-comments" aria-hidden="true"></i></span><h3>Counseling & support</h3><p>Request a counseling appointment and follow your upcoming sessions.</p><span class="home-service-link">Sign in to book <i class="fas fa-arrow-right" aria-hidden="true"></i></span></a><a class="home-service admissions" href="auth/register.php"><span class="home-service-icon"><i class="far fa-clipboard" aria-hidden="true"></i></span><h3>Entrance exam applications</h3><p>Create an examinee account, choose an available exam slot, and follow your application.</p><span class="home-service-link">Start an application <i class="fas fa-arrow-right" aria-hidden="true"></i></span></a><a class="home-service records" href="auth/login.php"><span class="home-service-icon"><i class="far fa-address-card" aria-hidden="true"></i></span><h3>Your student information</h3><p>Complete your personal data sheet and keep your guidance information up to date.</p><span class="home-service-link">Open your account <i class="fas fa-arrow-right" aria-hidden="true"></i></span></a></div></section>
+<section class="home-updates" id="announcements" aria-labelledby="announcementsTitle"><div class="home-container"><div class="home-section-heading"><div><p class="home-eyebrow">From the Guidance Office</p><h2 id="announcementsTitle">Latest announcements</h2></div><span class="home-official"><i class="fas fa-circle-check" aria-hidden="true"></i>Official guidance updates</span></div>
+<?php if($homepage_announcement):$pinned=$homepage_announcement;?><article class="home-pinned-announcement" data-public-pinned="<?=(int)$pinned['id']?>"><span class="home-pinned-icon" aria-hidden="true"><i class="fas fa-thumbtack"></i></span><div class="home-pinned-copy"><div class="home-announcement-meta"><span>Pinned announcement</span><time datetime="<?=$homeEscape(substr($pinned['created_at'],0,10))?>"><?=$homeEscape(date('M j, Y',strtotime($pinned['created_at'])))?></time></div><h3><?=$homeEscape($pinned['title'])?></h3><p class="home-announcement-message"><?=$homeEscape($homePreview($pinned['message'],230))?></p></div><button type="button" class="home-read-more" data-public-view="<?=(int)$pinned['id']?>" aria-haspopup="dialog">Read more <i class="fas fa-arrow-right" aria-hidden="true"></i></button></article><?php endif;?>
+<?php if(!$announcements&&!$homepage_announcement):?><div class="home-empty"><span><i class="far fa-bell" aria-hidden="true"></i></span><h3>No new announcements</h3><p>Check here for upcoming guidance activities and school updates.</p></div><?php elseif($announcements):?><div class="home-announcement-grid"><?php foreach($announcements as $item):?><article class="home-announcement" data-public-announcement="<?=(int)$item['id']?>"><div class="home-announcement-meta"><span><?=$homeEscape(ucwords(str_replace('_',' ',$item['event_type']?:'general')))?></span><time datetime="<?=$homeEscape(substr($item['created_at'],0,10))?>"><?=$homeEscape(date('M j, Y',strtotime($item['created_at'])))?></time></div><h3><?=$homeEscape($item['title'])?></h3><p class="home-announcement-message"><?=$homeEscape($homePreview($item['message'],170))?></p><?php if($item['event_date']):?><div class="home-announcement-details"><span><i class="far fa-calendar" aria-hidden="true"></i><?=$homeEscape(date('M j, Y',strtotime($item['event_date'])))?><?=$item['event_time']?' · '.$homeEscape(date('g:i A',strtotime($item['event_time']))):''?></span></div><?php endif;?><button type="button" class="home-read-more" data-public-view="<?=(int)$item['id']?>" aria-haspopup="dialog">Read more <i class="fas fa-arrow-right" aria-hidden="true"></i></button></article><?php endforeach;?></div><?php endif;?></div></section>
+<section class="home-container home-next"><div><h2>Ready to take the next step?</h2><p>Sign in for student services, or register if you’re applying for an entrance exam.</p></div><div><a class="home-button primary" href="auth/login.php">Sign in</a><a class="home-button" href="auth/register.php">Register as an examinee</a></div></section></main>
+<footer class="home-footer"><div class="home-container"><div class="home-brand"><img src="assets/images/srcblogo.png" width="36" height="36" alt=""><span><strong>SRCB Guidance Office</strong><small>St. Rita’s College of Balingasag</small></span></div><p>© <?=date('Y')?> St. Rita’s College of Balingasag</p><a href="#homeTitle">Back to top <i class="fas fa-arrow-up" aria-hidden="true"></i></a></div></footer><dialog id="publicAnnouncementDialog" class="home-notice-dialog home-poster-dialog" aria-labelledby="publicNoticeTitle"><div class="home-notice-card"><header class="home-notice-header"><div><p class="home-eyebrow">GUIDANCE OFFICE</p><h2>Announcement details</h2></div><button type="button" class="home-notice-close" data-close-public-notice aria-label="Close announcement">&times;</button></header><div class="home-notice-body"><article class="announcement-poster" id="publicNoticePoster"><p class="aposter-kicker" id="publicNoticeKicker">Announcement</p><div class="aposter-meta" id="publicNoticeMeta"></div><h2 class="aposter-title" id="publicNoticeTitle">Announcement</h2><p class="aposter-message" id="publicNoticeMessage"></p><dl class="aposter-info" id="publicNoticeEvent"></dl><footer class="aposter-brand"><div class="aposter-brand-copy"><strong>St. Rita's College of Balingasag</strong><small>Guidance Office</small></div><span class="aposter-megaphone" aria-hidden="true"><i class="fas fa-bullhorn"></i></span></footer></article><p class="home-notice-expiry" id="publicNoticeExpiry" hidden></p></div><footer class="home-notice-footer"><button type="button" class="home-button primary" data-close-public-notice>Close</button></footer></div></dialog>
 
-<!-- Hero Section -->
-<header class="bg-gradient-to-r from-primary to-blue-600 text-white py-14">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div>
-                <div class="flex items-center gap-3 mb-2">
-                    <img src="assets/images/srcblogo.png" alt="SRCB" class="w-14 h-14 rounded-full bg-white object-cover shadow-lg" onerror="this.style.display='none'">
-                    <div>
-                        <h1 class="text-2xl font-extrabold tracking-tight">St. Rita's College of Balingasag</h1>
-                        <p class="text-blue-100 text-sm font-medium">Guidance Announcements</p>
-                    </div>
-                </div>
-                <p class="text-blue-100 text-sm mt-2">View updates and official announcements from the Guidance Office.</p>
-            </div>
-            <div class="flex gap-2">
-                <a href="auth/login.php" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-semibold transition-colors border border-white/30">
-                    <i class="fas fa-sign-in-alt mr-1"></i>Login
-                </a>
-                <a href="auth/register.php" class="px-4 py-2 bg-white text-primary hover:bg-gray-100 rounded-lg text-sm font-bold transition-colors shadow-lg">
-                    <i class="fas fa-user-plus mr-1"></i>Entrance Exam Registration
-                </a>
-            </div>
-        </div>
-    </div>
-</header>
-
-<main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    
-    <!-- Featured Announcement -->
-    <?php if (!empty($homepage_announcement)): ?>
-    <div class="bg-white rounded-2xl shadow-lg p-6 mb-6 border-l-4 border-primary">
-        <div class="flex items-start gap-4">
-            <div class="text-primary text-2xl mt-1"><i class="fas fa-bullhorn"></i></div>
-            <div class="flex-1">
-                <div class="flex flex-wrap items-center gap-2 mb-2">
-                    <h2 class="text-lg font-bold text-gray-900"><?= htmlspecialchars($homepage_announcement['title']) ?></h2>
-                    <span class="px-2 py-0.5 bg-blue-50 text-primary text-xs font-semibold rounded border border-blue-100">Featured</span>
-                </div>
-                <div class="text-gray-700 announcement-message leading-relaxed"><?= htmlspecialchars($homepage_announcement['message']) ?></div>
-                <?php if (!empty($homepage_announcement['updated_at'])): ?>
-                <p class="text-xs text-gray-400 mt-3">Updated <?= date('M j, Y', strtotime($homepage_announcement['updated_at'])) ?></p>
-                <?php endif; ?>
-            </div>
-        </div>
-    </div>
-    <?php endif; ?>
-
-    <!-- Latest Announcements -->
-    <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-extrabold text-gray-900">Latest Announcements</h2>
-        <a href="auth/login.php" class="px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg text-sm font-semibold transition-colors shadow">
-            <i class="fas fa-lock mr-1"></i>Go to Dashboard
-        </a>
-    </div>
-
-    <?php if (empty($announcements)): ?>
-    <div class="bg-white rounded-2xl shadow-sm p-8 text-center">
-        <div class="text-gray-400">
-            <i class="fas fa-inbox text-4xl mb-3"></i>
-            <p>No announcements available right now.</p>
-        </div>
-    </div>
-    <?php else: ?>
-    <div class="space-y-4">
-        <?php foreach ($announcements as $a): ?>
-        <div class="bg-white rounded-xl shadow-sm p-5 hover:shadow-md transition-shadow">
-            <div class="flex flex-wrap items-start justify-between gap-2 mb-2">
-                <h3 class="text-base font-bold text-gray-900"><?= htmlspecialchars($a['title']) ?></h3>
-                <div class="flex flex-wrap gap-2">
-                    <?php if (!empty($a['event_type'])): ?>
-                    <span class="px-2 py-0.5 bg-blue-50 text-primary text-xs font-semibold rounded border border-blue-100">
-                        <?= htmlspecialchars(ucwords(str_replace('_', ' ', $a['event_type']))) ?>
-                    </span>
-                    <?php endif; ?>
-                    <?php if (!empty($a['event_date'])): ?>
-                    <span class="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded border border-gray-200">
-                        <i class="fas fa-calendar mr-1"></i><?= date('M j, Y', strtotime($a['event_date'])) ?>
-                    </span>
-                    <?php endif; ?>
-                </div>
-            </div>
-            <div class="text-gray-700 text-sm announcement-message leading-relaxed"><?= htmlspecialchars($a['message']) ?></div>
-            <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                <div class="text-xs text-gray-400">
-                    Posted <?= date('M j, Y', strtotime($a['created_at'])) ?>
-                    <?php if (!empty($a['creator_name'])): ?>by <?= htmlspecialchars($a['creator_name']) ?><?php endif; ?>
-                </div>
-                <?php if (!empty($a['location']) && $a['location'] !== '__HOMEPAGE__'): ?>
-                <span class="text-xs text-gray-400"><i class="fas fa-map-marker-alt mr-1"></i><?= htmlspecialchars($a['location']) ?></span>
-                <?php endif; ?>
-            </div>
-        </div>
-        <?php endforeach; ?>
-    </div>
-    <?php endif; ?>
-</main>
-
-<!-- Footer -->
-<footer class="bg-white border-t border-gray-200 mt-12">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div class="flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
-            <div class="flex items-center gap-2">
-                <img src="assets/images/srcblogo.png" alt="SRCB" class="w-8 h-8 rounded-full object-cover" onerror="this.style.display='none'">
-                <span>&copy; <?= date('Y') ?> St. Rita's College of Balingasag. All rights reserved.</span>
-            </div>
-            <div class="flex gap-4">
-                <a href="auth/login.php" class="hover:text-primary transition-colors">Login</a>
-                <a href="auth/register.php" class="hover:text-primary transition-colors">Register</a>
-            </div>
-        </div>
-    </div>
-</footer>
-
-</body>
-</html>
+<script type="application/json" id="publicAnnouncementData"><?=json_encode($homePublicData,JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE)?></script><script src="assets/js/public-announcements.js?v=20261028-3" defer></script>
+</body></html>

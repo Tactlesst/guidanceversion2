@@ -52,7 +52,7 @@ if ($_POST) {
         } catch (Exception $e) {
             $_SESSION['error_message'] = "Backup failed: " . $e->getMessage();
         }
-        header("Location: layout.php?page=backup_restore");
+        header("Location: " . portalSaveRedirect("layout.php?page=backup_restore"));
         exit();
     }
     
@@ -60,7 +60,7 @@ if ($_POST) {
         try {
             if (!isset($_FILES['backup_file']) || $_FILES['backup_file']['error'] !== UPLOAD_ERR_OK) {
                 $_SESSION['error_message'] = "Please select a valid backup file.";
-                header("Location: layout.php?page=backup_restore");
+                header("Location: " . portalSaveRedirect("layout.php?page=backup_restore"));
                 exit();
             }
             
@@ -69,7 +69,7 @@ if ($_POST) {
             
             if ($file_ext !== 'sql') {
                 $_SESSION['error_message'] = "Only .sql files are allowed.";
-                header("Location: layout.php?page=backup_restore");
+                header("Location: " . portalSaveRedirect("layout.php?page=backup_restore"));
                 exit();
             }
             
@@ -105,7 +105,7 @@ if ($_POST) {
         } catch (Exception $e) {
             $_SESSION['error_message'] = "Restore failed: " . $e->getMessage();
         }
-        header("Location: layout.php?page=backup_restore");
+        header("Location: " . portalSaveRedirect("layout.php?page=backup_restore"));
         exit();
     }
     
@@ -121,7 +121,7 @@ if ($_POST) {
         } else {
             $_SESSION['error_message'] = "Failed to delete backup file.";
         }
-        header("Location: layout.php?page=backup_restore");
+        header("Location: " . portalSaveRedirect("layout.php?page=backup_restore"));
         exit();
     }
 }
@@ -192,130 +192,18 @@ if (is_dir($backup_dir)) {
 }
 ?>
 
-<div class="space-y-6">
-    <!-- Header -->
-    <div class="flex items-center justify-between flex-wrap gap-3">
-        <h1 class="text-2xl font-bold text-gray-800">
-            <i class="fas fa-database mr-2 text-primary"></i>Backup & Restore
-        </h1>
+<section class="sa-page" aria-labelledby="sa-backup-title">
+    <div class="sa-page-heading"><div><p class="sa-eyebrow">Protect your data</p><h1 id="sa-backup-title">Backup & restore</h1><p class="sa-subtitle">Save a copy of your records, download an existing backup, or restore an earlier copy.</p></div><span class="sa-role-label">Superadmin access</span></div>
+    <?php if($success_message||$error_message):?><script type="application/json" data-portal-feedback><?=json_encode(['success'=>$success_message,'error'=>$error_message],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE)?></script><?php endif;?>
+    <div class="sa-task-grid">
+        <section class="sa-panel sa-backup-create"><div class="sa-panel-title"><div class="sa-task-title"><span class="sa-choice-icon"><i class="fas fa-database" aria-hidden="true"></i></span><h2>Create a backup</h2></div></div><div class="sa-panel-body"><p class="sa-task-description">Save the current database to a backup file on this computer. Your users, appointments, and school settings stay in place.</p><form data-portal-save method="post"><input type="hidden" name="create_backup" value="1"><button class="sa-button primary" type="submit"><i class="fas fa-plus" aria-hidden="true"></i>Create backup file</button></form><p class="sa-backup-detail">After creating a backup, use Download in the list below to keep a copy.</p></div></section>
+        <section class="sa-panel sa-backup-restore"><div class="sa-panel-title"><div class="sa-task-title"><span class="sa-choice-icon"><i class="fas fa-clock-rotate-left" aria-hidden="true"></i></span><h2>Restore an earlier backup</h2></div></div><div class="sa-panel-body"><p class="sa-task-description">Use a saved SQL backup when you need to recover older records.</p><details class="sa-restore-options"><summary>Show restore options</summary><form data-portal-save method="post" enctype="multipart/form-data" data-confirm-title="Restore this backup?" data-confirm-message="This can replace current records. Create and download a current backup before restoring an earlier one." data-confirm-label="Restore selected backup"><input type="hidden" name="restore_backup" value="1"><div class="sa-notice"><strong>This can replace current records</strong>Create and download a current backup before restoring an older one.</div><label class="sa-field">Choose a backup file<input type="file" name="backup_file" accept=".sql" required><small>SQL files only (.sql).</small></label><button class="sa-button amber" type="submit"><i class="fas fa-clock-rotate-left" aria-hidden="true"></i>Restore selected backup</button></form></details></div></section>
     </div>
-
-    <!-- Alerts -->
-    <?= renderAlerts($success_message, $error_message) ?>
-
-    <!-- Info Alert -->
-    <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-lg">
-        <div class="flex items-start gap-3">
-            <i class="fas fa-info-circle text-blue-500 mt-0.5"></i>
-            <div>
-                <h3 class="font-semibold text-blue-900 mb-1">Database Backup & Restore</h3>
-                <p class="text-sm text-blue-700">Create backups of your database to protect your data. Restore from previous backups if needed.</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Backup Section -->
-    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div class="p-4 border-b bg-gray-50">
-            <h3 class="text-sm font-bold text-gray-700">
-                <i class="fas fa-save mr-2 text-green-500"></i>Create Backup
-            </h3>
-        </div>
-        <div class="p-6">
-            <p class="text-sm text-gray-600 mb-4">Create a complete backup of the database. This includes all users, appointments, schedules, and system data.</p>
-            <form method="POST">
-                <input type="hidden" name="create_backup" value="1">
-                <button type="submit" class="px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 transition-colors">
-                    <i class="fas fa-download mr-2"></i>Create Backup Now
-                </button>
-            </form>
-        </div>
-    </div>
-
-    <!-- Restore Section -->
-    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div class="p-4 border-b bg-gray-50">
-            <h3 class="text-sm font-bold text-gray-700">
-                <i class="fas fa-upload mr-2 text-yellow-500"></i>Restore from Backup
-            </h3>
-        </div>
-        <div class="p-6">
-            <div class="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded-lg mb-4">
-                <div class="flex items-start gap-3">
-                    <i class="fas fa-exclamation-triangle text-yellow-500 mt-0.5"></i>
-                    <div>
-                        <h4 class="font-semibold text-yellow-900 mb-1">Warning</h4>
-                        <p class="text-sm text-yellow-700">Restoring from a backup will replace all current data. This action cannot be undone. Make sure to create a backup of the current state before restoring.</p>
-                    </div>
-                </div>
-            </div>
-            <form method="POST" enctype="multipart/form-data">
-                <input type="hidden" name="restore_backup" value="1">
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Select Backup File</label>
-                    <input type="file" name="backup_file" accept=".sql,.zip" class="w-full px-3 py-2 border rounded-lg text-sm" required>
-                    <p class="text-xs text-gray-500 mt-1">Accepted formats: .sql, .zip</p>
-                </div>
-                <button type="submit" class="px-4 py-2 bg-yellow-500 text-white rounded-lg text-sm hover:bg-yellow-600 transition-colors" onclick="return confirm('Are you sure you want to restore from this backup? This will replace all current data.')">
-                    <i class="fas fa-upload mr-2"></i>Restore from Backup
-                </button>
-            </form>
-        </div>
-    </div>
-
-    <!-- Backup History -->
-    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div class="p-4 border-b bg-gray-50">
-            <h3 class="text-sm font-bold text-gray-700">
-                <i class="fas fa-history mr-2 text-blue-500"></i>Backup History
-            </h3>
-        </div>
-        <div class="p-6">
-            <?php if (empty($backup_files)): ?>
-                <div class="text-center py-8 text-gray-400">
-                    <i class="fas fa-database fa-3x mb-3 opacity-30"></i>
-                    <p class="text-sm">No backup history available yet</p>
-                    <p class="text-xs mt-1">Backups will appear here once created</p>
-                </div>
-            <?php else: ?>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm">
-                        <thead>
-                            <tr class="border-b">
-                                <th class="text-left py-2 px-3 font-medium text-gray-700">File Name</th>
-                                <th class="text-left py-2 px-3 font-medium text-gray-700">Size</th>
-                                <th class="text-left py-2 px-3 font-medium text-gray-700">Date Created</th>
-                                <th class="text-right py-2 px-3 font-medium text-gray-700">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($backup_files as $backup): ?>
-                                <tr class="border-b hover:bg-gray-50">
-                                    <td class="py-2 px-3 text-gray-800"><?= htmlspecialchars($backup['name']) ?></td>
-                                    <td class="py-2 px-3 text-gray-600"><?= formatFileSize($backup['size']) ?></td>
-                                    <td class="py-2 px-3 text-gray-600"><?= $backup['date'] ?></td>
-                                    <td class="py-2 px-3 text-right">
-                                        <div class="flex justify-end gap-2">
-                                            <a href="backups/<?= htmlspecialchars($backup['name']) ?>" download class="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
-                                                <i class="fas fa-download mr-1"></i>Download
-                                            </a>
-                                            <form method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this backup?')">
-                                                <input type="hidden" name="backup_file" value="<?= htmlspecialchars($backup['name']) ?>">
-                                                <button type="submit" name="delete_backup" value="1" class="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200">
-                                                    <i class="fas fa-trash mr-1"></i>Delete
-                                                </button>
-                                            </form>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php endif; ?>
-        </div>
-    </div>
-</div>
+    <section class="sa-panel" style="margin-top:24px"><div class="sa-panel-title"><div><h2>Saved backup files</h2><p><?=count($backup_files)?> <?=count($backup_files)===1?'backup available':'backups available'?> · Most recent first</p></div></div><div class="sa-table-wrap"><table class="sa-table"><caption class="um-sr-only" style="position:absolute;clip:rect(0,0,0,0)">Saved backups</caption><thead><tr><th>Backup file</th><th>File size</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead><tbody>
+    <?php foreach($backup_files as $backup):?><tr><td class="sa-record-name" data-label="Backup file"><strong><?=htmlspecialchars($backup['name'])?></strong><small>SQL database backup</small></td><td data-label="File size"><?=formatFileSize($backup['size'])?></td><td data-label="Created"><?=date('M j, Y · g:i A',strtotime($backup['date']))?></td><td class="sa-actions"><div class="sa-row-actions"><a class="sa-button" href="../backups/<?=rawurlencode($backup['name'])?>" download><i class="fas fa-download" aria-hidden="true"></i>Download</a><form data-portal-save method="post" data-confirm-title="Delete this backup file?" data-confirm-message="This permanently removes the saved file. Current database records stay in place." data-confirm-label="Delete backup file"><input type="hidden" name="backup_file" value="<?=htmlspecialchars($backup['name'],ENT_QUOTES)?>"><button class="sa-button danger" type="submit" name="delete_backup" value="1"><i class="far fa-trash-can" aria-hidden="true"></i>Delete file</button></form></div></td></tr><?php endforeach;?>
+    <?php if(!$backup_files):?><tr><td colspan="4" class="sa-empty"><strong>No backup files yet</strong><p>Create your first backup using the button above.</p></td></tr><?php endif;?>
+    </tbody></table></div></section>
+</section>
 
 <?php
 function formatFileSize($bytes) {

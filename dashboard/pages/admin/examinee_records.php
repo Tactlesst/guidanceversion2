@@ -140,11 +140,11 @@ function fetchExaminees() {
                 const name = (u.last_name||'') + ', ' + (u.first_name||'') + (u.middle_name ? ' ' + u.middle_name : '');
                 tbody.innerHTML += `<tr class="hover:bg-gray-50">
                     <td class="px-4 py-3 font-medium break-words">${esc(name)}</td>
-                    <td class="px-4 py-3 text-gray-500 break-all">${esc(u.student_id||'—')}</td>
-                    <td class="px-4 py-3 text-gray-500 break-all">${esc(u.email||'—')}</td>
-                    <td class="px-4 py-3 text-gray-500">${esc(u.department||'—')}</td>
-                    <td class="px-4 py-3 text-gray-500">${esc(u.strand||'—')}</td>
-                    <td class="px-4 py-3 text-gray-500">${esc(u.grade_level||'—')}</td>
+                    <td class="px-4 py-3 text-gray-500 break-all">${esc(u.student_id||'N/A')}</td>
+                    <td class="px-4 py-3 text-gray-500 break-all">${esc(u.email||'N/A')}</td>
+                    <td class="px-4 py-3 text-gray-500">${esc(u.department||'N/A')}</td>
+                    <td class="px-4 py-3 text-gray-500">${esc(u.strand||'N/A')}</td>
+                    <td class="px-4 py-3 text-gray-500">${esc(u.grade_level||'N/A')}</td>
                 </tr>`;
             });
         }

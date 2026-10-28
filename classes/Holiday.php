@@ -8,6 +8,12 @@ class Holiday {
     public function __construct($db) { $this->conn = $db; }
 
     public function create() {
+        if($this->type==='special')$this->type='special_non_working';
+        if(!in_array($this->type,['regular','special_non_working','special_working'],true))throw new InvalidArgumentException('Choose a valid holiday type.');
+        if(!is_string($this->name)||trim(strip_tags($this->name))===''||mb_strlen($this->name)>100)throw new InvalidArgumentException('Enter a holiday name of 1 to 100 characters.');
+        $date=is_string($this->date)?DateTimeImmutable::createFromFormat('!Y-m-d',$this->date):false;
+        if(!$date||$date->format('Y-m-d')!==$this->date)throw new InvalidArgumentException('Choose a valid holiday date.');
+
         $stmt = $this->conn->prepare("INSERT INTO {$this->table_name} SET name=:name, date=:date, type=:type, is_recurring=:is_recurring, year=:year");
         $this->name = htmlspecialchars(strip_tags($this->name));
         $this->type = htmlspecialchars(strip_tags($this->type));
@@ -32,15 +38,19 @@ class Holiday {
     }
 
     public function isHoliday($date) {
-        $stmt = $this->conn->prepare("SELECT COUNT(*) as count FROM {$this->table_name} WHERE date = ?");
-        $stmt->execute([$date]);
-        return $stmt->fetch(PDO::FETCH_ASSOC)['count'] > 0;
+        $stmt=$this->conn->prepare("SELECT COUNT(*) FROM {$this->table_name} WHERE date=? OR (is_recurring=1 AND date<=? AND DATE_FORMAT(date,'%m-%d')=DATE_FORMAT(?,'%m-%d'))");
+        $stmt->execute([$date,$date,$date]);return (int)$stmt->fetchColumn()>0;
     }
-
     public function getHolidayInfo($date) {
-        $stmt = $this->conn->prepare("SELECT * FROM {$this->table_name} WHERE date = ? LIMIT 1");
-        $stmt->execute([$date]);
-        return $stmt->rowCount() > 0 ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
+        $stmt=$this->conn->prepare("SELECT * FROM {$this->table_name} WHERE date=? OR (is_recurring=1 AND date<=? AND DATE_FORMAT(date,'%m-%d')=DATE_FORMAT(?,'%m-%d')) ORDER BY (date=?) DESC,date DESC LIMIT 1");
+        $stmt->execute([$date,$date,$date,$date]);return $stmt->fetch(PDO::FETCH_ASSOC)?:false;
+    }
+    public function getCalendarHolidays(int $month,int $year): array {
+        $start=sprintf('%04d-%02d-01',$year,$month);$end=date('Y-m-t',strtotime($start));
+        $stmt=$this->conn->prepare("SELECT * FROM {$this->table_name} WHERE date BETWEEN ? AND ? OR (is_recurring=1 AND date<=? AND MONTH(date)=?) ORDER BY date,id");
+        $stmt->execute([$start,$end,$end,$month]);$rows=[];
+        foreach($stmt->fetchAll(PDO::FETCH_ASSOC) as $row){$display=$row['is_recurring']?sprintf('%04d-%s',$year,substr($row['date'],5)):$row['date'];$date=DateTimeImmutable::createFromFormat('!Y-m-d',$display);if(!$date||$date->format('Y-m-d')!==$display)continue;$row['date']=$display;$rows[]=$row;}
+        return $rows;
     }
 
     public function getUpcomingHolidays($limit = 5) {

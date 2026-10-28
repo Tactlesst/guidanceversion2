@@ -95,7 +95,9 @@ if($_POST) {
         } elseif (empty($counseling->concern_type) || empty($counseling->concern_description) || empty($counseling->urgency_level)) {
             $error_message = "Please fill in all required fields.";
         } else {
-            $appointment_id = $counseling->create();
+            try{$appointment_id=$counseling->createWithDailyLimit();}
+            catch(PDOException $e){error_log('Counseling booking: '.$e->getMessage());$appointment_id=false;$error_message='Your appointment could not be saved. Please try again.';}
+            catch(InvalidArgumentException|RuntimeException $e){$appointment_id=false;$error_message=$e->getMessage();}
             if($appointment_id) {
                 $_SESSION['success_message'] = "Your counseling appointment has been booked successfully! You will be notified once a counselor is assigned.";
                 
@@ -119,7 +121,7 @@ if($_POST) {
                 header("Location: $redirect_url");
                 exit();
             } else {
-                $error_message = "Failed to submit your appointment request. Please try again.";
+                $error_message = $error_message ?: "Failed to submit your appointment request. Please try again.";
             }
         }
     }
@@ -141,6 +143,21 @@ try {
     }
 } catch (Exception $e) {}
 
+// Get counselor availability schedules for the month
+$counselor_availability = [];
+try {
+    $start_date = "$year-$month-01";
+    $end_date = date('Y-m-t', strtotime($start_date));
+    $avail_stmt = $db->prepare("SELECT DATE(start_datetime) as avail_date, TIME(start_datetime) as start_time, TIME(end_datetime) as end_time FROM schedules WHERE event_type = 'counseling' AND DATE(start_datetime) BETWEEN ? AND ? AND is_active = 1");
+    $avail_stmt->execute([$start_date, $end_date]);
+    while ($row = $avail_stmt->fetch(PDO::FETCH_ASSOC)) {
+        $counselor_availability[$row['avail_date']][] = [
+            'start_time' => $row['start_time'],
+            'end_time' => $row['end_time']
+        ];
+    }
+} catch (Exception $e) {}
+
 // Get booked appointments (other students) for availability display
 $booked_slots = [];
 try {
@@ -152,6 +169,11 @@ try {
         $booked_slots[$row['appointment_date']][$row['appointment_time']] = $row['count'];
     }
 } catch (Exception $e) {}
+
+$daily_capacity=[];
+try{$daily_capacity=(new DailyBookingLimit($db))->getCapacityForRange(date('Y-m-01',strtotime($start_date)),$end_date);}catch(Throwable $e){error_log('Counseling daily capacity: '.$e->getMessage());}
+
+$school_closure_dates=(new SchoolClosure($db))->calendar(date('Y-m-01',strtotime($start_date)),$end_date);
 
 // Build lookup: dates that have holiday
 $holiday_dates = [];
@@ -670,9 +692,12 @@ const allTimeSlots = [
 ];
 
 // Booked slots from PHP (keyed by date then time)
+const schoolClosures = <?=json_encode($school_closure_dates,JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE)?>;
+const dailyCapacity = <?=json_encode($daily_capacity,JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT)?>;
 const bookedSlots = <?= json_encode($booked_slots) ?>;
 const myAppointments = <?= json_encode($my_appointments) ?>;
 const holidayDates = <?= json_encode($holiday_dates) ?>;
+const counselorAvailability = <?= json_encode($counselor_availability) ?>;
 
 function openBookingModal() {
     document.getElementById('bookingModal').classList.remove('hidden');
@@ -712,6 +737,7 @@ function handleDateClick(dateStr, hasMyAppt) {
         return;
     }
     
+    if(schoolClosures[dateStr]){Swal.fire({icon:'info',title:'School closed',text:schoolClosures[dateStr].reason+'. Please choose another date.'});return;}
     // Validate: no holidays
     if (holidayDates.includes(dateStr)) {
         Swal.fire({ icon: 'warning', title: 'Holiday', text: 'Cannot book appointments on holidays. Please select a different date.', confirmButtonColor: '#2563eb' });
@@ -870,21 +896,51 @@ function loadTimeSlots(dateStr) {
     
     const dateBookings = bookedSlots[dateStr] || {};
     const dateMyAppts = myAppointments[dateStr] || [];
+    const dateAvailability = counselorAvailability[dateStr] || [];
     
     // Clear existing options
     timeSelect.innerHTML = '<option value="">Select a time slot</option>';
     slotsDiv.innerHTML = '';
+    
+    // Honor the same daily limit enforced again when the appointment is saved.
+    if(schoolClosures[dateStr]){const closed=document.createElement('div');closed.className='col-span-4 text-center text-sm text-amber-600 py-3';closed.textContent='School closed: '+schoolClosures[dateStr].reason+'. Please choose another date.';slotsDiv.appendChild(closed);slotsContainer.classList.remove('hidden');return;}
+    const capacity=dailyCapacity[dateStr];
+    if(capacity?.is_reached){
+        const full=document.createElement('div');full.className='col-span-4 text-center text-sm text-amber-600 py-3';
+        full.textContent='Daily booking limit reached ('+capacity.current_count+'/'+capacity.max_limit+'). Please choose another date.';
+        slotsDiv.appendChild(full);slotsContainer.classList.remove('hidden');return;
+    }
+
+    // Check if counselor availability is set for this date
+    if (dateAvailability.length === 0) {
+        const noAvail = document.createElement('div');
+        noAvail.className = 'col-span-4 text-center text-sm text-amber-500 py-3';
+        noAvail.innerHTML = '<i class="fas fa-exclamation-triangle mr-1"></i>No counselor availability set for this date. Please choose another date or contact the guidance office.';
+        slotsDiv.appendChild(noAvail);
+        slotsContainer.classList.remove('hidden');
+        return;
+    }
     
     let availableCount = 0;
     
     allTimeSlots.forEach(slot => {
         const bookedCount = dateBookings[slot.value] || 0;
         const isMySlot = dateMyAppts.some(a => a.appointment_time === slot.value);
+        
+        // Check if this time slot falls within any counselor availability block
+        let isWithinAvailability = false;
+        for (const avail of dateAvailability) {
+            if (slot.value >= avail.start_time && slot.value < avail.end_time) {
+                isWithinAvailability = true;
+                break;
+            }
+        }
+        
         // Consider a slot "full" if 3+ bookings (adjust threshold as needed)
         const isFull = bookedCount >= 3;
         
-        // Add to select dropdown
-        if (!isFull) {
+        // Only show slots that are within counselor availability
+        if (isWithinAvailability && !isFull) {
             const opt = document.createElement('option');
             opt.value = slot.value;
             opt.textContent = slot.label + (bookedCount > 0 ? ` (${bookedCount} booked)` : '');
@@ -897,16 +953,17 @@ function loadTimeSlots(dateStr) {
         slotBtn.type = 'button';
         slotBtn.className = `px-3 py-2 rounded-lg text-xs font-medium border-2 transition-all text-center ${
             isMySlot ? 'bg-green-100 border-green-400 text-green-700 cursor-default' :
+            !isWithinAvailability ? 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed' :
             isFull ? 'bg-red-50 border-red-200 text-red-400 cursor-not-allowed line-through' :
             'bg-white border-gray-200 text-gray-700 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 cursor-pointer'
         }`;
-        slotBtn.innerHTML = `${slot.label}${isMySlot ? '<br><span class=\'text-[9px]\'>Your Appt</span>' : ''}${isFull ? '<br><span class=\'text-[9px]\'>Full</span>' : ''}${!isFull && !isMySlot && bookedCount > 0 ? `<br><span class=\'text-[9px]\'>${bookedCount} booked</span>` : ''}`;
+        slotBtn.innerHTML = `${slot.label}${isMySlot ? '<br><span class=\'text-[9px]\'>Your Appt</span>' : ''}${!isWithinAvailability ? '<br><span class=\'text-[9px]\'>Unavailable</span>' : ''}${isFull ? '<br><span class=\'text-[9px]\'>Full</span>' : ''}${isWithinAvailability && !isFull && !isMySlot && bookedCount > 0 ? `<br><span class=\'text-[9px]\'>${bookedCount} booked</span>` : ''}`;
         
-        if (!isFull && !isMySlot) {
+        if (isWithinAvailability && !isFull && !isMySlot) {
             slotBtn.onclick = function() {
                 // Highlight selected
                 document.querySelectorAll('#timeSlots button').forEach(b => {
-                    if (!b.classList.contains('bg-green-100') && !b.classList.contains('bg-red-50')) {
+                    if (!b.classList.contains('bg-green-100') && !b.classList.contains('bg-red-50') && !b.classList.contains('bg-gray-50')) {
                         b.classList.remove('border-blue-500', 'bg-blue-50', 'text-blue-700');
                         b.classList.add('border-gray-200', 'bg-white', 'text-gray-700');
                     }
@@ -982,6 +1039,7 @@ document.getElementById('bookingForm').addEventListener('submit', function(e) {
         return;
     }
     // Check holiday
+    if(schoolClosures[dateVal]){e.preventDefault();Swal.fire({icon:'info',title:'School closed',text:schoolClosures[dateVal].reason+'. Please choose another date.'});return;}
     if (holidayDates.includes(dateVal)) {
         e.preventDefault();
         Swal.fire({ icon: 'warning', title: 'Holiday', text: 'Cannot book appointments on holidays.', confirmButtonColor: '#2563eb' });

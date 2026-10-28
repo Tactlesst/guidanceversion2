@@ -1,0 +1,22 @@
+[
+  {
+    "theme": "blue-gold",
+    "prompt": "Create a finished reusable background image for a school guidance-office announcement poster, portrait 4:5. Absolutely NO text, letters, numbers, logos or watermarks. Keep the top left, center, and left 75% as a nearly flat deep dark color so white live HTML headings and long messages can overlay legibly. Decorative illustration confined to lower right 20%, subtle geometric corner accents at extreme edges. Clean polished modern editorial flat illustration with slight paper depth. This is a background artwork asset, not a screenshot or a mockup. Deep navy blue and golden yellow palette, small stylish white and cyan megaphone illustration at the bottom right, gold diagonal corner stripes.",
+    "tool": "Built-in image_gen"
+  },
+  {
+    "theme": "teal-guidance",
+    "prompt": "Create a finished reusable background image for a school guidance-office announcement poster, portrait 4:5. Absolutely NO text, letters, numbers, logos or watermarks. Keep the top left, center, and left 75% as a nearly flat deep dark color so white live HTML headings and long messages can overlay legibly. Decorative illustration confined to lower right 20%, subtle geometric corner accents at extreme edges. Clean polished modern editorial flat illustration with slight paper depth. This is a background artwork asset, not a screenshot or a mockup. Deep forest teal background, mint and soft cream accents, understated illustration of two speech bubbles with small leaves and a supportive growth motif in the lower right corner.",
+    "tool": "Built-in image_gen"
+  },
+  {
+    "theme": "purple-academic",
+    "prompt": "Create a finished reusable background image for a school guidance-office announcement poster, portrait 4:5. Absolutely NO text, letters, numbers, logos or watermarks. Keep the top left, center, and left 75% as a nearly flat deep dark color so white live HTML headings and long messages can overlay legibly. Decorative illustration confined to lower right 20%, subtle geometric corner accents at extreme edges. Clean polished modern editorial flat illustration with slight paper depth. This is a background artwork asset, not a screenshot or a mockup. Deep aubergine purple background, soft lavender and warm gold accents, tasteful stack of books with graduation cap in the lower right corner.",
+    "tool": "Built-in image_gen"
+  },
+  {
+    "theme": "coral-events",
+    "prompt": "Create a finished reusable background image for a school guidance-office announcement poster, portrait 4:5. Absolutely NO text, letters, numbers, logos or watermarks. Keep the top left, center, and left 75% as a nearly flat deep dark color so white live HTML headings and long messages can overlay legibly. Decorative illustration confined to lower right 20%, subtle geometric corner accents at extreme edges. Clean polished modern editorial flat illustration with slight paper depth. This is a background artwork asset, not a screenshot or a mockup. Deep midnight blue background with coral, peach and pale gold accents, festive yet professional illustration of a blank calendar and small stars in the lower right corner. Calendar must have no text, numerals or lettering.",
+    "tool": "Built-in image_gen"
+  }
+]

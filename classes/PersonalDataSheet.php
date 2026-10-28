@@ -1,7 +1,7 @@
 <?php
 class PersonalDataSheet {
     private $conn;
-    private $table_name = "personal_data_sheets";
+    private $table_name = "pds";
 
     public $id, $user_id, $middle_name, $birth_date, $birth_place, $gender, $civil_status;
     public $nationality, $religion, $contact_number, $address;

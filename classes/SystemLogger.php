@@ -6,6 +6,7 @@ class SystemLogger {
 
     public function log($type, $message, $user_id = null, $additional_data = null) {
         try {
+            if($user_id){$actorQuery=$this->db->prepare('SELECT role FROM users WHERE id=?');$actorQuery->execute([$user_id]);$actorRole=$actorQuery->fetchColumn();if($actorRole){$additional_data=is_array($additional_data)?$additional_data:[];$additional_data['actor_role']=$actorRole;}}
             $stmt = $this->db->prepare("INSERT INTO system_logs (user_id, log_type, message, ip_address, user_agent, additional_data) VALUES (?, ?, ?, ?, ?, ?)");
             $stmt->execute([$user_id, $type, $message, $this->getClientIP(), $_SERVER['HTTP_USER_AGENT'] ?? null, $additional_data ? json_encode($additional_data) : null]);
             return true;
@@ -45,6 +46,15 @@ class SystemLogger {
             $stmt->execute([$days]);
             return $stmt->rowCount();
         } catch (Exception $e) { return false; }
+    }
+
+    public static function isLoopbackAddress($address) {
+        if (!is_string($address) || filter_var(trim($address), FILTER_VALIDATE_IP) === false) return false;
+        $packed = inet_pton(trim($address));
+        if (strlen($packed) === 4) return ord($packed[0]) === 127;
+        if ($packed === inet_pton('::1')) return true;
+        // IPv4-mapped IPv6 requests can also originate on this computer.
+        return substr($packed, 0, 12) === hex2bin('00000000000000000000ffff') && ord($packed[12]) === 127;
     }
 
     private function getClientIP() {

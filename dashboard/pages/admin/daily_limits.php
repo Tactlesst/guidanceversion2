@@ -21,8 +21,8 @@ if ($_POST) {
     try {
         if (isset($_POST['set_single_limit'])) {
             $dailyLimit->setDailyLimit($_POST['date'], (int)$_POST['max_appointments'], $_SESSION['user_id']);
-            $_SESSION['success_message'] = "Counseling limit saved.";
-            header("Location: layout.php?page=daily_limits&tab=counseling");
+            if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message'] = "Counseling limit saved.";
+            header("Location: " . portalSaveRedirect("layout.php?page=daily_limits&tab=counseling"));
             exit();
         }
 
@@ -38,15 +38,15 @@ if ($_POST) {
                 }
                 $start->modify('+1 day');
             }
-            $_SESSION['success_message'] = "Counseling limits set for {$count} weekdays.";
-            header("Location: layout.php?page=daily_limits&tab=counseling");
+            if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message'] = "Counseling limits set for {$count} weekdays.";
+            header("Location: " . portalSaveRedirect("layout.php?page=daily_limits&tab=counseling"));
             exit();
         }
 
         if (isset($_POST['remove_limit'])) {
             $dailyLimit->removeDailyLimit($_POST['remove_date']);
-            $_SESSION['success_message'] = "Counseling custom limit removed.";
-            header("Location: layout.php?page=daily_limits&tab=counseling");
+            if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message'] = "Counseling custom limit removed.";
+            header("Location: " . portalSaveRedirect("layout.php?page=daily_limits&tab=counseling"));
             exit();
         }
 
@@ -54,8 +54,8 @@ if ($_POST) {
             $max = min(15, max(1, (int)$_POST['exam_max_appointments']));
             $stmt = $db->prepare("INSERT INTO entrance_exam_daily_limits (date, max_appointments, set_by) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE max_appointments = VALUES(max_appointments), set_by = VALUES(set_by), updated_at = CURRENT_TIMESTAMP");
             $stmt->execute([$_POST['exam_date'], $max, $_SESSION['user_id']]);
-            $_SESSION['success_message'] = "Entrance exam limit saved.";
-            header("Location: layout.php?page=daily_limits&tab=entrance-exam");
+            if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message'] = "Entrance exam limit saved.";
+            header("Location: " . portalSaveRedirect("layout.php?page=daily_limits&tab=entrance-exam"));
             exit();
         }
 
@@ -72,16 +72,16 @@ if ($_POST) {
                 }
                 $start->modify('+1 day');
             }
-            $_SESSION['success_message'] = "Entrance exam limits set for {$count} weekdays.";
-            header("Location: layout.php?page=daily_limits&tab=entrance-exam");
+            if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message'] = "Entrance exam limits set for {$count} weekdays.";
+            header("Location: " . portalSaveRedirect("layout.php?page=daily_limits&tab=entrance-exam"));
             exit();
         }
 
         if (isset($_POST['remove_exam_limit'])) {
             $stmt = $db->prepare("DELETE FROM entrance_exam_daily_limits WHERE date = ?");
             $stmt->execute([$_POST['remove_exam_date']]);
-            $_SESSION['success_message'] = "Entrance exam custom limit removed.";
-            header("Location: layout.php?page=daily_limits&tab=entrance-exam");
+            if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message'] = "Entrance exam custom limit removed.";
+            header("Location: " . portalSaveRedirect("layout.php?page=daily_limits&tab=entrance-exam"));
             exit();
         }
     } catch (Exception $e) {
@@ -132,7 +132,7 @@ $total_exam_pages = max(1, (int)ceil(($total_exams ?: 0) / $records_per_page));
         </div>
     </div>
 
-    <?= renderAlerts($success_message, $error_message) ?>
+    <?php if($success_message||$error_message):?><script type="application/json" data-portal-feedback><?=json_encode(['success'=>$success_message,'error'=>$error_message],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE)?></script><?php endif;?>
 
     <!-- Stats Cards -->
     <?php
@@ -214,7 +214,7 @@ $total_exam_pages = max(1, (int)ceil(($total_exams ?: 0) / $records_per_page));
                         <i class="fas fa-calendar-day text-primary"></i>Set Single Day Limit
                     </h3>
                 </div>
-                <form method="POST" class="p-5 space-y-4">
+                <form data-portal-save method="POST" class="p-5 space-y-4">
                     <input type="hidden" name="set_single_limit" value="1">
                     <div>
                         <label class="block text-xs font-medium text-gray-500 mb-1.5">Date</label>
@@ -235,7 +235,7 @@ $total_exam_pages = max(1, (int)ceil(($total_exams ?: 0) / $records_per_page));
                         <i class="fas fa-calendar-week text-emerald-600"></i>Set Range (Weekdays)
                     </h3>
                 </div>
-                <form method="POST" class="p-5 space-y-4">
+                <form data-portal-save method="POST" class="p-5 space-y-4">
                     <input type="hidden" name="set_range_limits" value="1">
                     <div>
                         <label class="block text-xs font-medium text-gray-500 mb-1.5">Start Date</label>
@@ -354,7 +354,7 @@ $total_exam_pages = max(1, (int)ceil(($total_exams ?: 0) / $records_per_page));
                         <i class="fas fa-calendar-day text-indigo-600"></i>Set Single Day Limit
                     </h3>
                 </div>
-                <form method="POST" class="p-5 space-y-4">
+                <form data-portal-save method="POST" class="p-5 space-y-4">
                     <input type="hidden" name="set_exam_single_limit" value="1">
                     <div>
                         <label class="block text-xs font-medium text-gray-500 mb-1.5">Date</label>
@@ -375,7 +375,7 @@ $total_exam_pages = max(1, (int)ceil(($total_exams ?: 0) / $records_per_page));
                         <i class="fas fa-calendar-week text-emerald-600"></i>Set Range (Weekdays)
                     </h3>
                 </div>
-                <form method="POST" class="p-5 space-y-4">
+                <form data-portal-save method="POST" class="p-5 space-y-4">
                     <input type="hidden" name="set_exam_range_limits" value="1">
                     <div>
                         <label class="block text-xs font-medium text-gray-500 mb-1.5">Start Date</label>
@@ -549,7 +549,7 @@ $total_exam_pages = max(1, (int)ceil(($total_exams ?: 0) / $records_per_page));
                             </td>
                             <td class="px-5 py-3.5 text-gray-500"><?= htmlspecialchars(trim(($limit['first_name'] ?? '') . ' ' . ($limit['last_name'] ?? '')) ?: 'System') ?></td>
                             <td class="px-5 py-3.5 text-right">
-                                <form method="POST" class="inline">
+                                <form data-portal-save method="POST" class="inline">
                                     <?php if ($active_tab === 'counseling'): ?>
                                         <input type="hidden" name="remove_limit" value="1">
                                         <input type="hidden" name="remove_date" value="<?= htmlspecialchars($limit['date']) ?>">

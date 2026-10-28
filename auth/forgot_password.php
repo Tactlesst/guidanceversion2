@@ -1,0 +1,3 @@
+<?php require_once '../includes/session.php'; ?>
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Account Recovery - SRCB Guidance</title>
+<body style="font-family:Arial;background:#f3f4f6;padding:8%;color:#163269"><main style="max-width:540px;margin:auto;background:white;padding:32px;border-radius:16px"><h1>Account Recovery</h1><p>Please contact the SRCB Guidance Office to request a password reset. Staff will verify your identity before resetting your account.</p><p>Have your student ID or registered email ready. Do not share your password.</p><p>Automatic email recovery is not configured for this local installation.</p><a href="login.php">Back to login</a></main></body></html>

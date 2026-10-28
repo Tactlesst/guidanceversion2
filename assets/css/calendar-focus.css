@@ -1,0 +1,58 @@
+/* Make the month grid the primary surface of the scheduling workspace. */
+.cw-workspace[data-workspace-page=schedules] .cw-page-header{margin-bottom:14px;padding-bottom:14px;align-items:center}
+.cw-workspace[data-workspace-page=schedules] .cw-page-header h1{font-size:25px;margin-bottom:4px}
+.cw-workspace[data-workspace-page=schedules] .cw-description{font-size:12px}
+.cw-workspace[data-workspace-page=schedules] .cw-eyebrow{margin-bottom:3px}
+.cw-workspace[data-workspace-page=schedules] .cw-page-symbol{width:42px;height:42px;font-size:19px}
+#scheduleWorkspace .sch-summary{margin:0 0 12px;gap:10px}
+#scheduleWorkspace .sch-summary>div{padding:10px 14px;gap:10px}
+#scheduleWorkspace .sch-summary strong{font-size:21px}
+#scheduleWorkspace .sch-summary span:not(.sch-stat-symbol){font-size:11px;margin:3px 0 0}
+#scheduleWorkspace .sch-summary small{display:none}
+#scheduleWorkspace .sch-stat-symbol{width:32px;height:32px;font-size:18px;border-radius:8px}
+#scheduleWorkspace .sch-filters summary{padding:10px 15px;min-height:42px}
+#scheduleWorkspace .sch-selection{margin:10px 0;color:#49667f;font-size:11px}
+#scheduleWorkspace .sch-selection>span{color:#62788d;font-size:10px}
+#scheduleWorkspace .sch-calendar-card{border-color:#b8cbdc;box-shadow:0 3px 16px #173e6310;border-radius:12px}
+#scheduleWorkspace .sch-month-header{background:#f2f7fc;padding:17px 19px;border-top:4px solid #24577c;gap:12px}
+#scheduleWorkspace .sch-month-header h2{font-size:25px;color:#173e61;letter-spacing:-.5px;font-weight:700}
+#scheduleWorkspace .sch-month-header .sch-eyebrow{font-size:10px;color:#506e88;letter-spacing:1.1px}
+#scheduleWorkspace .sch-month-actions a{border-color:#b9cddd;color:#264f72;background:#fff;min-width:38px;min-height:40px}
+#scheduleWorkspace .sch-month-actions a.sch-today{font-size:12px;font-weight:600}
+#scheduleWorkspace .sch-view-switch{border-color:#c4d4e3;background:#e5edf5}
+#scheduleWorkspace .sch-view-switch button{color:#506a83}
+#scheduleWorkspace .sch-view-switch button[aria-pressed=true]{background:#24577c;color:#fff}
+#scheduleWorkspace .sch-calendar{border-color:#bfcede}
+#scheduleWorkspace .sch-weekdays{background:#e9f0f7;color:#3c5874;font-size:12px;font-weight:700}
+#scheduleWorkspace .sch-weekdays span{padding:11px 0}
+#scheduleWorkspace .sch-weekdays span:first-child{color:#9b4c52}
+#scheduleWorkspace .sch-day{border-color:#ccdae6;padding:7px;min-height:100px}
+#scheduleWorkspace .sch-day-empty{background:#edf2f7}
+#scheduleWorkspace .sch-day.sch-is-past:not(.sch-is-closed){background:#fff}
+#scheduleWorkspace .sch-day.sch-is-closed{background:#fcf1f1}
+#scheduleWorkspace .sch-day-number{font-size:15px!important;color:#294d6b;min-height:33px!important;margin-bottom:4px}
+#scheduleWorkspace .sch-day-number>span{width:30px;height:30px;font-weight:700}
+#scheduleWorkspace .sch-day-number small{font-size:10px;color:#187267}
+#scheduleWorkspace .sch-is-closed .sch-day-number{color:#9b5559}
+#scheduleWorkspace .sch-day-number small.sch-closed-label{font-size:9px;color:#9b5559;font-weight:500}
+#scheduleWorkspace .sch-day-selected{background:#eaf7f2!important;box-shadow:inset 0 0 0 3px #1c8273}
+#scheduleWorkspace .sch-day.sch-is-closed.sch-day-selected{background:#fae8e8!important;box-shadow:inset 0 0 0 3px #af666b}
+#scheduleWorkspace .sch-is-today .sch-day-number>span{background:#18776e;color:#fff}
+#scheduleWorkspace .sch-day:not(.sch-is-closed):not(.sch-day-empty):hover{background:#f0f7fc}
+#scheduleWorkspace button.sch-event{font-size:11px!important;min-height:26px!important;padding:4px 6px}
+#scheduleWorkspace .sch-limit{font-size:9px;color:#805b13;background:#fff4d7}
+#scheduleWorkspace button.sch-more{font-size:10px!important;color:#3b6380}
+#scheduleWorkspace .sch-calendar-footer{font-size:11px;color:#4f6b84;background:#f6f9fc;border-color:#ccdae6;padding:11px 16px}
+.sch-calendar-guide{display:flex;gap:15px;flex-wrap:wrap;align-items:center}
+.sch-calendar-guide>span{display:inline-flex;align-items:center;gap:6px}
+.sch-calendar-guide .sch-key{display:inline-block;width:9px;height:9px;border-radius:3px;background:#f8dddd;border:1px solid #bc7c81}
+.sch-calendar-guide .sch-key-today{background:#18776e;border-color:#18776e;border-radius:50%}
+.sch-calendar-guide .sch-key-selected{background:#eaf7f2;border:2px solid #1c8273}
+#scheduleWorkspace .sch-calendar-footer .sch-calendar-tip{margin-left:auto;font-size:10px;color:#5b758e}
+.sch-month-note{font-size:11px;line-height:1.5;color:#56718b;margin:6px 0 0}
+#scheduleWorkspace .sch-day-panel{border-color:#d1dee9}
+#scheduleWorkspace .sch-day-panel-heading .sch-eyebrow{color:#5c778f}
+@media(min-width:1400px){#scheduleWorkspace .sch-columns{grid-template-columns:minmax(0,1fr) 265px;gap:18px}}
+@media(min-width:1200px) and (max-height:850px){#scheduleWorkspace .sch-day{min-height:86px}#scheduleWorkspace .sch-month-header{padding:13px 17px}#scheduleWorkspace .sch-weekdays span{padding:9px 0}.cw-workspace[data-workspace-page=schedules] .cw-description{display:none}}
+@media(max-width:700px){.cw-workspace[data-workspace-page=schedules] .cw-page-header{gap:10px;margin-bottom:12px}.cw-workspace[data-workspace-page=schedules] .cw-description{display:none}#scheduleWorkspace .sch-summary>div{padding:9px;gap:0}#scheduleWorkspace .sch-summary strong{font-size:18px}#scheduleWorkspace .sch-summary span:not(.sch-stat-symbol){font-size:10px;line-height:1.5}#scheduleWorkspace .sch-selection{gap:3px;margin:8px 0}#scheduleWorkspace .sch-month-header{padding:14px 12px}#scheduleWorkspace .sch-month-header h2{font-size:23px}#scheduleWorkspace .sch-month-actions{gap:8px}#scheduleWorkspace .sch-month-actions a{min-width:35px;padding:4px 9px}#scheduleWorkspace .sch-month-actions a.sch-today{font-size:11px}#scheduleWorkspace .sch-calendar{min-width:0;width:100%}#scheduleWorkspace .sch-calendar-scroll{overflow-x:hidden}#scheduleWorkspace .sch-weekdays{font-size:10px}#scheduleWorkspace .sch-weekdays span{padding:10px 0}#scheduleWorkspace .sch-day{padding:3px;min-height:84px}#scheduleWorkspace .sch-day-number{font-size:13px!important;min-height:32px!important;justify-content:center;flex-wrap:wrap;gap:0}#scheduleWorkspace .sch-day-number>span{width:29px;height:29px}#scheduleWorkspace .sch-day-number small{font-size:7px;width:100%;text-align:center;line-height:1.3}#scheduleWorkspace .sch-day-number small.sch-closed-label{font-size:7px}#scheduleWorkspace button.sch-event{height:9px;min-height:9px!important;padding:0;border-radius:3px;font-size:0!important;line-height:0;border-left:4px solid #498b6b}#scheduleWorkspace button.sch-event[data-entry-type=entrance_exam]{border-color:#287b8b}#scheduleWorkspace button.sch-event[data-entry-type=pds_period]{border-color:#8058a1}#scheduleWorkspace button.sch-event[data-entry-type=counseling]{border-color:#3b6eab}#scheduleWorkspace button.sch-event[data-entry-type=holiday]{border-color:#b25965}#scheduleWorkspace .sch-limit{font-size:0;height:5px;min-height:5px;padding:0;border-radius:2px;background:#dbb85e}#scheduleWorkspace button.sch-booking-badge{font-size:8px!important;line-height:1.4;min-height:20px!important;padding:2px 0;text-align:center;overflow:hidden}#scheduleWorkspace button.sch-more{font-size:8px!important;padding:2px 0;min-height:20px!important}#scheduleWorkspace .sch-calendar-footer{padding:11px 12px;display:block}#scheduleWorkspace .sch-calendar-guide{gap:12px;font-size:10px}#scheduleWorkspace .sch-calendar-footer .sch-calendar-tip{display:block;font-size:10px;margin:9px 0 0;line-height:1.6}.sch-month-note{font-size:10px}#scheduleWorkspace .sch-day-panel{margin-top:0}}
+@media(prefers-reduced-motion:no-preference){#scheduleWorkspace .sch-day{transition:background-color .1s ease}}

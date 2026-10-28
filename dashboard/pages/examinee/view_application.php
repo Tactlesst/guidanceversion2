@@ -10,6 +10,15 @@ require_once __DIR__ . '/../../../classes/EntranceExamResults.php';
 $entrance_exam = new EntranceExam($db);
 $exam_results = new EntranceExamResults($db);
 
+$_SESSION['booking_csrf'] = $_SESSION['booking_csrf'] ?? bin2hex(random_bytes(24));
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_exam'])) {
+    if (hash_equals($_SESSION['booking_csrf'], $_POST['csrf'] ?? '')) {
+        $cancel = $db->prepare("UPDATE entrance_exam_appointments SET status='cancelled',updated_at=NOW() WHERE id=? AND user_id=? AND status IN ('pending','confirmed')");
+        $cancel->execute([(int)$_POST['cancel_exam'],$uid]);
+        header('Location: layout.php?page=view_application'); exit;
+    }
+    echo '<p role="alert">Please reload and try again.</p>';
+}
 // Get user's applications
 $applications = $entrance_exam->getByUserId($uid);
 ?>
@@ -98,7 +107,7 @@ $applications = $entrance_exam->getByUserId($uid);
                 $olsat_data = $exam_results->getResultsByAppointmentId($app['id']);
                 ?>
                 
-                <?php if($olsat_data && !empty($olsat_data['total_score'])): ?>
+                <?php if($olsat_data && $olsat_data['total_score'] !== null): ?>
                     <!-- OLSAT Results Display -->
                     <div class="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500 rounded-lg p-4 mt-4">
                         <div class="flex justify-between items-center mb-3">
@@ -171,7 +180,10 @@ $applications = $entrance_exam->getByUserId($uid);
                 <?php endif; ?>
             <?php endif; ?>
 
-            <?php if($app['status'] == 'confirmed' || $app['status'] == 'pending'): ?>
+            <?php if(in_array($app['status'],['pending','confirmed'],true)): ?>
+<form method="post" class="my-4"><input type="hidden" name="csrf" value="<?=htmlspecialchars($_SESSION['booking_csrf'])?>"><button name="cancel_exam" value="<?=(int)$app['id']?>" class="border rounded px-4 py-2 text-red-700">Cancel this exam appointment</button></form>
+<?php endif; ?>
+<?php if($app['status'] == 'confirmed' || $app['status'] == 'pending'): ?>
                 <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
                     <div class="flex items-start gap-3">
                         <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">

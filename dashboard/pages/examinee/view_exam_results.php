@@ -47,7 +47,7 @@ $is_college = strpos($results['grade_level_applying'], 'College') !== false ||
 
 $is_basic_ed = false;
 for ($i = 1; $i <= 10; $i++) {
-    if (strpos($results['grade_level_applying'], 'Grade ' . $i) !== false) {
+    if (trim($results['grade_level_applying']) === 'Grade ' . $i) {
         $is_basic_ed = true;
         break;
     }
@@ -116,7 +116,7 @@ for ($i = 1; $i <= 10; $i++) {
             </div>
 
             <div class="grid grid-cols-4 gap-2 p-2 pl-6 bg-gray-50 border-b border-gray-200 text-sm">
-                <div>• <strong>Verbal Abilities</strong></div>
+                <div>â€¢ <strong>Verbal Abilities</strong></div>
                 <div class="text-center"><strong><?= $results['verbal_abilities_score'] ?></strong></div>
                 <div class="text-center"><strong><?= $results['verbal_stanine'] ?? 'N/A' ?></strong></div>
                 <div class="text-center"><strong><?= $results['verbal_interpretation'] ?? 'N/A' ?></strong></div>
@@ -137,7 +137,7 @@ for ($i = 1; $i <= 10; $i++) {
             </div>
 
             <div class="grid grid-cols-4 gap-2 p-2 pl-6 bg-gray-50 border-b border-gray-200 text-sm">
-                <div>• <strong>Non-Verbal Abilities</strong></div>
+                <div>â€¢ <strong>Non-Verbal Abilities</strong></div>
                 <div class="text-center"><strong><?= $results['nonverbal_abilities_score'] ?></strong></div>
                 <div class="text-center"><strong><?= $results['nonverbal_stanine'] ?? 'N/A' ?></strong></div>
                 <div class="text-center"><strong><?= $results['nonverbal_interpretation'] ?? 'N/A' ?></strong></div>

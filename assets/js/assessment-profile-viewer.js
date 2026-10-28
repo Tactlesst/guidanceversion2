@@ -1,0 +1,31 @@
+let currentAssessment=null,assessmentProfileRequest=null;
+function apNode(tag,className,text){const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text===null?'':String(text);return node;}
+async function viewResult(type,id){
+    if(!['mi','ls','ls_intermediate'].includes(type))return;assessmentProfileRequest?.abort();const controller=new AbortController();assessmentProfileRequest=controller;currentAssessment=null;
+    const modal=document.getElementById('assessmentModal'),content=document.getElementById('modalContent');modal.dataset.assessmentType=type;document.getElementById('modalTitle').textContent=type==='mi'?'Intelligence profile':'Learning style profile';document.getElementById('assessmentProfileIcon').className='fas '+(type==='mi'?'fa-brain':'fa-graduation-cap');document.getElementById('assessmentPrintButton').disabled=true;document.getElementById('assessmentPrintStatus').textContent='';content.replaceChildren(apNode('p','ap-loading','Loading assessment profile…'));window.PortalDialogs.open(modal);modal.querySelector('.pd-close').focus({preventScroll:true});
+    try{const response=await fetch(BASE+'&action=get_details&type='+encodeURIComponent(type)+'&id='+encodeURIComponent(id),{signal:controller.signal});if(!response.ok)throw new Error('Unavailable');const data=await response.json();if(controller!==assessmentProfileRequest||!modal.isConnected||modal.classList.contains('hidden'))return;if(data.error||!data.success)throw new Error('Unavailable');currentAssessment={...data,assessment_type:type,assessment_id:id};renderAssessmentProfile(currentAssessment);document.getElementById('assessmentPrintButton').disabled=false;}
+    catch(error){if(error.name==='AbortError'||controller!==assessmentProfileRequest)return;content.replaceChildren(apNode('p','ap-loading','This assessment could not be loaded. Close the window and try again.'));}
+}
+function renderAssessmentProfile(data){
+    const content=document.getElementById('modalContent');content.replaceChildren();const isMi=data.assessment_type==='mi',identity=apNode('section','ap-student'),copy=apNode('div'),level=apNode('span','ap-level',isMi?'Multiple intelligence':data.level==='intermediate'?'Intermediate inventory':'Standard inventory');copy.append(apNode('strong','',data.student),apNode('p','',data.student_id?'Student ID: '+data.student_id:'Student ID not assigned'));identity.append(copy,level);content.append(identity);
+    const metadata=apNode('dl','ap-meta');for(const [label,value] of [['Submitted',data.submitted],['Grade / year',data.grade_level||'Not assigned']]){const field=apNode('div');field.append(apNode('dt','',label),apNode('dd','',value));metadata.append(field);}content.append(metadata);
+    const dominant=isMi?data.scores.filter(score=>score.dominant).map(score=>score.name).join(', '):data.dominant_style||data.scores.filter(score=>score.dominant).map(score=>score.name).join(', ');
+    const summary=apNode('div','ap-dominant');summary.append(apNode('span','',isMi?'Recorded dominant areas':'Recorded learning preference'),apNode('strong','',dominant||'Not recorded'));content.append(summary);
+    const heading=apNode('div','ap-results-heading');heading.append(apNode('h3','',isMi?'Intelligence results':'Learning style results'),apNode('span','','Share of assessment score'));content.append(heading);
+    const grid=apNode('div','ap-score-grid');
+    for(const score of data.scores){const card=apNode('section','ap-score-card');card.dataset.dominant=String(Boolean(score.dominant));const title=apNode('div','ap-score-heading');title.append(apNode('h4','',score.name),apNode('strong','',score.score+'%'));card.append(title);const meter=apNode('progress');meter.max=100;meter.value=Math.min(100,Math.max(0,Number(score.score)||0));meter.setAttribute('aria-label',score.name+' score');card.append(meter);if(score.dominant)card.append(apNode('span','ap-dominant-tag','Dominant'));grid.append(card);}content.append(grid);
+    content.append(apNode('p','ap-rounding','Percentages are rounded.'));
+    const printNote=apNode('div','ap-print-note');printNote.append(apNode('i','fas fa-file-lines'),apNode('p','',isMi?'Print the intelligence results as a school report.':'Print the learner’s profile using saved student information. Blank lines can be completed by hand.'));printNote.firstElementChild.setAttribute('aria-hidden','true');content.append(printNote);
+}
+function closeAssessmentModal(){assessmentProfileRequest?.abort();window.PortalDialogs.close(document.getElementById('assessmentModal'));}
+async function printAssessment(){
+    if(!currentAssessment)return;const button=document.getElementById('assessmentPrintButton'),status=document.getElementById('assessmentPrintStatus');button.disabled=true;status.textContent='Preparing printout…';
+    const previous=document.getElementById('assessmentPrintFrame');if(previous)previous.remove();const frame=document.createElement('iframe');frame.id='assessmentPrintFrame';frame.title='Assessment print document';frame.setAttribute('aria-hidden','true');frame.style.cssText='position:fixed;width:1px;height:1px;left:-10000px;top:0;border:0;';
+    try{
+        const loaded=new Promise((resolve,reject)=>{frame.addEventListener('load',resolve,{once:true});frame.addEventListener('error',()=>reject(new Error('Print document unavailable')),{once:true});});frame.src=BASE+'&action=print_profile&type='+encodeURIComponent(currentAssessment.assessment_type)+'&id='+encodeURIComponent(currentAssessment.assessment_id);document.body.appendChild(frame);await loaded;
+        const doc=frame.contentDocument;if(!doc?.querySelector('[data-assessment-paper]'))throw new Error('Print document unavailable');
+        if(doc.fonts?.ready)await doc.fonts.ready;await Promise.all([...doc.images].map(img=>img.complete?Promise.resolve():new Promise(resolve=>{img.addEventListener('load',resolve,{once:true});img.addEventListener('error',resolve,{once:true});})));
+        frame.contentWindow.addEventListener('afterprint',()=>frame.remove(),{once:true});frame.contentWindow.focus();frame.contentWindow.print();status.textContent='';
+    }catch(error){frame.remove();status.textContent='The printout could not be prepared. Please try again.';}
+    finally{button.disabled=false;}
+}

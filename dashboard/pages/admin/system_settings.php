@@ -1,7 +1,16 @@
 <?php
+if(!defined('IN_LAYOUT')||!in_array($role??'',['admin','super_admin'],true)){http_response_code(403);return;}
+$_SESSION['office_settings_csrf']=$_SESSION['office_settings_csrf']??bin2hex(random_bytes(32));
+$settingsSection=($_GET['section']??'')==='activity'?'activity':'settings';
+
 require_once __DIR__ . '/../../../classes/SystemSettings.php';
 
 $settings = new SystemSettings($db);
+if($settingsSection==='activity'){
+ echo '<link rel="stylesheet" href="../assets/css/staff-activity.css?v=20261028-1"><nav class="st-tabs" aria-label="System settings sections"><a href="layout.php?page=system_settings">Office settings</a><a href="layout.php?page=system_settings&amp;section=activity" aria-current="page">Staff activity</a></nav>';
+ require __DIR__.'/../../../includes/staff_activity_panel.php';return;
+}
+
 
 $msgs = fetchSessionMessages();
 $success_message = $msgs['success'];
@@ -9,6 +18,8 @@ $error_message = $msgs['error'];
 
 // POST handlers
 if ($_POST) {
+    if(isset($_POST['save_announcement'])){http_response_code(410);echo '<p role="alert">Announcements are now managed on the <a href="layout.php?page=manage_announcements">Announcements page</a>.</p>';return;}
+    if(!is_string($_POST['office_settings_csrf']??null)||!hash_equals($_SESSION['office_settings_csrf'],$_POST['office_settings_csrf'])){http_response_code(403);echo '<p role="alert">Refresh System Settings and try again.</p>';return;}
     if (isset($_POST['save_settings'])) {
         try {
             $toggle_fields = ['counseling_enabled','pds_enabled','entrance_exam_enabled'];
@@ -20,27 +31,10 @@ if ($_POST) {
             foreach ($text_fields as $field) {
                 if (isset($_POST[$field])) $settings->setSettingValue($field, trim($_POST[$field]));
             }
-            $_SESSION['settings_success'] = "Settings saved!"; header("Location: layout.php?page=system_settings"); exit();
+            if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['settings_success'] = "Settings saved!"; header("Location: " . portalSaveRedirect("layout.php?page=system_settings")); exit();
         } catch (Exception $e) { $error_message = "Failed to save settings."; }
     }
-    if (isset($_POST['save_announcement'])) {
-        $title = trim($_POST['announcement_title'] ?? '');
-        $message = trim($_POST['announcement_message'] ?? '');
-        $audience = $_POST['target_audience'] ?? 'all_users';
-        $is_active = isset($_POST['announcement_active']) ? 1 : 0;
-        $ann_id = (int)($_POST['announcement_id'] ?? 0);
-        if ($title === '' || $message === '') { $error_message = "Title and message required."; }
-        else {
-            try {
-                if ($ann_id > 0) {
-                    $db->prepare("UPDATE announcements SET title=?, message=?, target_audience=?, is_active=?, updated_at=NOW() WHERE id=?")->execute([$title, $message, $audience, $is_active, $ann_id]);
-                } else {
-                    $db->prepare("INSERT INTO announcements (title, message, event_type, target_audience, location, is_active, created_by, created_at) VALUES (?,?,'general',?,'__HOMEPAGE__',?,?,NOW())")->execute([$title, $message, $audience, $is_active, $_SESSION['user_id']]);
-                }
-                $_SESSION['settings_success'] = "Announcement saved!"; header("Location: layout.php?page=system_settings"); exit();
-            } catch (Exception $e) { $error_message = "Failed to save announcement."; }
-        }
-    }
+
 }
 
 // Get current settings
@@ -48,23 +42,19 @@ $all_settings = $settings->getAllSettings();
 $settings_map = [];
 if ($all_settings) { while ($s = $all_settings->fetch(PDO::FETCH_ASSOC)) $settings_map[$s['setting_key']] = $s['setting_value']; }
 
-// Get homepage announcement
-$announcement = null;
-try {
-    $stmt = $db->prepare("SELECT * FROM announcements WHERE location = '__HOMEPAGE__' ORDER BY updated_at DESC LIMIT 1");
-    $stmt->execute(); $announcement = $stmt->fetch(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
 ?>
 
+<link rel="stylesheet" href="../assets/css/staff-activity.css?v=20261028-1">
+<nav class="st-tabs" aria-label="System settings sections"><a href="layout.php?page=system_settings" aria-current="page">Office settings</a><a href="layout.php?page=system_settings&amp;section=activity"><i class="fas fa-clock-rotate-left" aria-hidden="true"></i> Staff activity</a></nav>
 <div class="space-y-6">
     <h1 class="text-2xl font-bold text-gray-800"><i class="fas fa-cogs mr-2 text-primary"></i>System Settings</h1>
 
-    <?= renderAlerts($success_message, $error_message) ?>
+    <?php if($success_message||$error_message):?><script type="application/json" data-portal-feedback><?=json_encode(['success'=>$success_message,'error'=>$error_message],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE)?></script><?php endif;?>
 
     <!-- Feature Toggles -->
     <div class="bg-white rounded-xl shadow-sm p-6">
         <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-toggle-on mr-2 text-primary"></i>Feature Toggles</h3>
-        <form method="POST" class="space-y-4">
+        <form data-portal-save method="POST" class="space-y-4"><input type="hidden" name="office_settings_csrf" value="<?=htmlspecialchars($_SESSION['office_settings_csrf'],ENT_QUOTES)?>">
             <input type="hidden" name="save_settings" value="1">
             <div class="space-y-3">
                 <?php foreach (['counseling_enabled'=>'Counseling Appointments','pds_enabled'=>'Personal Data Sheet','entrance_exam_enabled'=>'Entrance Exam'] as $key=>$label): ?>
@@ -83,24 +73,5 @@ try {
         </form>
     </div>
 
-    <!-- Homepage Announcement -->
-    <div class="bg-white rounded-xl shadow-sm p-6">
-        <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-bullhorn mr-2 text-orange-500"></i>Homepage Announcement</h3>
-        <form method="POST" class="space-y-4">
-            <input type="hidden" name="save_announcement" value="1">
-            <input type="hidden" name="announcement_id" value="<?= $announcement['id']??0 ?>">
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Title *</label><input type="text" name="announcement_title" value="<?= htmlspecialchars($announcement['title']??'') ?>" required class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Message *</label><textarea name="announcement_message" rows="3" required class="w-full px-3 py-2 border rounded-lg text-sm"><?= htmlspecialchars($announcement['message']??'') ?></textarea></div>
-            <div class="grid grid-cols-2 gap-4">
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Target Audience</label>
-                    <select name="target_audience" class="w-full px-3 py-2 border rounded-lg text-sm">
-                        <option value="all_users" <?= ($announcement['target_audience']??'')==='all_users'?'selected':'' ?>>All Users</option>
-                        <option value="all_students" <?= ($announcement['target_audience']??'')==='all_students'?'selected':'' ?>>Students Only</option>
-                    </select>
-                </div>
-                <div class="flex items-center gap-2 pt-6"><input type="checkbox" name="announcement_active" value="1" <?= !empty($announcement['is_active'])?'checked':'' ?> class="rounded"><label class="text-sm text-gray-700">Active</label></div>
-            </div>
-            <button type="submit" class="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600"><i class="fas fa-save mr-1"></i>Save Announcement</button>
-        </form>
-    </div>
+    <p><a class="st-link" href="layout.php?page=manage_announcements"><i class="fas fa-bullhorn" aria-hidden="true"></i> Manage homepage announcements</a></p>
 </div>

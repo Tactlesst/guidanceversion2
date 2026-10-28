@@ -1,156 +1,63 @@
 <?php
-// Sidebar partial — included by layout.php
+// Keep role-specific destinations in one navigation definition.
+$navGroups = [];
+if (in_array($role,['admin','guidance_advocate'],true)) {
+    $navGroups = [
+        'Workspace' => [
+            ['dashboard','Office overview','fa-house'],
+            ['students','Students & records','fa-users',[
+                ['student_records','Student records'],['student_list_report','Student lists & printing'],
+                ['admin_view_pds','Personal data sheets'],['counseling_history','Counseling history'],['survey_results','Survey results']
+            ]],
+            ['manage_counseling','Counseling','fa-comments'],
+            ['manage_exams','Exam appointments','fa-clipboard-list']
+        ],
+        'Planning' => [['schedules','Schedule','fa-calendar-days'],['manage_announcements','Announcements','fa-bullhorn']],
+        'Insights' => [['reports','Reports & insights','fa-chart-simple',[
+            ['reports','Reports overview'],['examinee_reports','Examinee reports'],['ses_analytics','SES analytics'],['olsat_reports','OLSAT reports'],['counseling_reports','Counseling reports']
+        ]]]
+    ];
+    if ($role==='admin') $navGroups['Administration']=[['system_settings','System settings','fa-gear']];
+} elseif ($role==='super_admin') {
+    $navGroups=['Workspace'=>[['dashboard','Superadmin home','fa-house'],['user_management','Users & accounts','fa-users-gear'],['academic_settings','Academic settings','fa-graduation-cap']],
+        'Administration'=>[['backup_restore','Backup & restore','fa-database'],['system_logs','Activity logs','fa-file-lines']]];
+} elseif ($role==='student') {
+    $navGroups=['My workspace'=>[['dashboard','Overview','fa-house'],['view_pds','Personal data sheet','fa-file-lines'],['counseling','Counseling','fa-comments',[
+        ['book_appointment','Book an appointment'],['view_appointments','My appointments']
+    ]]]];
+    $sg=$db->prepare('SELECT grade_level FROM student_profiles WHERE user_id=?');$sg->execute([$uid]);
+    if(in_array($sg->fetchColumn(),['Grade 11','Grade 12','1st Year College','2nd Year College','3rd Year College','4th Year College'],true)) $navGroups['My workspace'][]=['multiple_intelligence_survey','Intelligence survey','fa-brain'];
+} else {
+    $completed=$db->prepare("SELECT id FROM entrance_exam_appointments WHERE user_id=? AND status='completed' AND (total_score IS NOT NULL OR qualified_grade IS NOT NULL) LIMIT 1");$completed->execute([$uid]);
+    $examLink=$completed->fetchColumn()?['view_exam_results','Exam results','fa-certificate']:['book_exam','Book an exam','fa-calendar-plus'];
+    $navGroups=['My application'=>[['dashboard','Overview','fa-house'],$examLink,['view_application','Application status','fa-clipboard-list']]];
+}
+if($role==='guidance_advocate')foreach($navGroups as &$office_links)foreach($office_links as &$office_link)if(isset($office_link[3]))$office_link[3]=array_values(array_filter($office_link[3],fn($child)=>$child[0]!=='counseling_history'));
+unset($office_links,$office_link);
 ?>
-<aside id="sidebar" class="fixed top-0 left-0 h-full w-64 bg-gradient-to-b from-[#163269] to-[#0f1f42] text-white z-50 transition-transform duration-300 -translate-x-full lg:translate-x-0 shadow-2xl">
-    <div class="flex items-center gap-3 px-5 py-5 border-b border-white/10">
-        <div class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-sm font-bold">SRCB</div>
-        <div><div class="font-bold text-sm leading-tight">SRCB Guidance</div><div class="text-[10px] text-white/50">Management System</div></div>
-    </div>
-    <nav class="mt-4 px-3 space-y-1">
-        <!-- Dashboard - All roles -->
-        <a href="layout.php?page=dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='dashboard'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-home w-5 text-center"></i><span>Dashboard</span></a>
-
-        <?php if (in_array($role, ['admin','guidance_advocate'])): ?>
-        <!-- Admin / Guidance Advocate Menu -->
-        <div>
-            <button onclick="toggleSubmenu('student_management')" class="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg <?= in_array($page,['student_records','student_list_report','admin_view_pds','counseling_history','survey_results'])?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-                <div class="flex items-center gap-3">
-                    <i class="fas fa-users w-5 text-center"></i><span>Student Management</span>
+<aside id="sidebar" class="portal-sidebar" aria-label="Main navigation">
+    <a class="portal-brand" href="layout.php?page=dashboard" aria-label="SRCB Guidance home">
+        <img src="../assets/images/srcblogo.png" alt="SRCB seal" width="42" height="42">
+        <span><strong>SRCB Guidance</strong><small>Care. Support. Growth.</small></span>
+    </a>
+    <button type="button" class="portal-drawer-close" id="sidebarClose" aria-label="Close navigation"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+    <nav class="portal-nav">
+    <?php foreach($navGroups as $group=>$links): ?>
+        <div class="portal-nav-group"><p class="portal-nav-label"><?=htmlspecialchars($group)?></p>
+        <?php foreach($links as $link): $children=$link[3]??[];$childPages=array_column($children,0);
+            $active=$page===$link[0] || in_array($page,$childPages,true) || (in_array($link[0],['fill_pds','view_pds'],true)&&in_array($page,['fill_pds','view_pds'],true)) || ($link[0]==='manage_exams'&&$page==='release_results'); ?>
+            <?php if($children): ?>
+                <button type="button" class="portal-nav-link <?=$active?'is-active':''?>" data-nav-group="<?=$link[0]?>" aria-controls="<?=$link[0]?>-submenu" aria-expanded="<?=$active?'true':'false'?>">
+                    <i class="fas <?=$link[2]?>" aria-hidden="true"></i><span class="cw-nav-copy"><?=htmlspecialchars($link[1])?><?php if(in_array($role,['admin','guidance_advocate'],true)):?><small><?=$link[0]==='students'?'Profiles, PDS & assessments':'Trends, results & printable lists'?></small><?php endif;?></span><i class="fas fa-chevron-down portal-chevron aria-hidden="true"></i>
+                </button>
+                <div id="<?=$link[0]?>-submenu" class="portal-submenu <?=$active?'':'hidden'?>">
+                <?php foreach($children as $child): ?><a href="layout.php?page=<?=$child[0]?>" class="<?=$page===$child[0]?'is-current':''?>" <?=$page===$child[0]?'aria-current="page"':''?>><?=htmlspecialchars($child[1])?></a><?php endforeach;?>
                 </div>
-                <i id="student_management-chevron" class="fas fa-chevron-down text-xs transition-transform <?= in_array($page,['student_records','student_list_report','admin_view_pds','counseling_history','survey_results'])?'rotate-180':'' ?>"></i>
-            </button>
-            <div id="student_management-submenu" class="<?= in_array($page,['student_records','student_list_report','admin_view_pds','counseling_history','survey_results'])?'':'hidden' ?> pl-8 mt-1 space-y-1">
-                <a href="layout.php?page=student_records" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='student_records'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-                    <i class="fas fa-list w-4 text-center"></i><span>Student Records</span></a>
-                <a href="layout.php?page=student_list_report" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='student_list_report'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-                    <i class="fas fa-clipboard-list w-4 text-center"></i><span>Student List</span></a>
-                <a href="layout.php?page=admin_view_pds" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='admin_view_pds'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-                    <i class="fas fa-file-alt w-4 text-center"></i><span>Personal Data Sheet</span></a>
-                <a href="layout.php?page=counseling_history" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='counseling_history'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-                    <i class="fas fa-history w-4 text-center"></i><span>Counseling History</span></a>
-                <a href="layout.php?page=survey_results" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='survey_results'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-                    <i class="fas fa-chart-pie w-4 text-center"></i><span>Survey Results</span></a>
-            </div>
-        </div>
-        <a href="layout.php?page=manage_counseling" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='manage_counseling'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-comments w-5 text-center"></i><span>Counseling Management</span></a>
-        <a href="layout.php?page=manage_exams" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='manage_exams'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-clipboard-list w-5 text-center"></i><span>Entrance Exam Appointments</span></a>
-        <a href="layout.php?page=manage_announcements" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='manage_announcements'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-bullhorn w-5 text-center"></i><span>Announcements</span></a>
-        <a href="layout.php?page=schedules" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='schedules'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-calendar-alt w-5 text-center"></i><span>Schedule</span></a>
-        <a href="layout.php?page=daily_limits" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='daily_limits'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-calendar-check w-5 text-center"></i><span>Daily Booking Limits</span></a>
-        <div>
-            <button onclick="toggleSubmenu('reports')" class="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg <?= in_array($page,['counseling_reports','ses_analytics','olsat_reports','passed_examinees_report'])?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-                <div class="flex items-center gap-3">
-                    <i class="fas fa-chart-bar w-5 text-center"></i><span>Reports & Analytics</span>
-                </div>
-                <i id="reports-chevron" class="fas fa-chevron-down text-xs transition-transform <?= in_array($page,['counseling_reports','ses_analytics','olsat_reports','passed_examinees_report'])?'rotate-180':'' ?>"></i>
-            </button>
-            <div id="reports-submenu" class="<?= in_array($page,['counseling_reports','ses_analytics','olsat_reports','passed_examinees_report'])?'':'hidden' ?> pl-8 mt-1 space-y-1">
-                <a href="layout.php?page=counseling_reports" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='counseling_reports'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-                    <i class="fas fa-calendar-alt w-4 text-center"></i><span>Counseling Reports</span></a>
-                <a href="layout.php?page=ses_analytics" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='ses_analytics'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-                    <i class="fas fa-chart-line w-4 text-center"></i><span>SES Analytics</span></a>
-                <a href="layout.php?page=olsat_reports" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='olsat_reports'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-                    <i class="fas fa-clipboard-list w-4 text-center"></i><span>OLSAT Exam Reports</span></a>
-                <a href="layout.php?page=passed_examinees_report" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='passed_examinees_report'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-                    <i class="fas fa-clipboard-check w-4 text-center"></i><span>Passed Examinees</span></a>
-            </div>
-        </div>
-        <?php if ($role === 'admin'): ?>
-        <a href="layout.php?page=system_settings" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='system_settings'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-cogs w-5 text-center"></i><span>System Settings</span></a>
-        <?php endif; ?>
-        <?php endif; ?>
-
-        <?php if ($role === 'super_admin'): ?>
-        <!-- Super Admin Menu -->
-        <a href="layout.php?page=user_management" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='user_management'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-users-cog w-5 text-center"></i><span>User Management</span></a>
-        <a href="layout.php?page=academic_settings" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='academic_settings'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-graduation-cap w-5 text-center"></i><span>Academic Settings</span></a>
-        <a href="layout.php?page=backup_restore" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='backup_restore'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-database w-5 text-center"></i><span>Backup & Restore</span></a>
-        <a href="layout.php?page=system_logs" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='system_logs'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-file-alt w-5 text-center"></i><span>System Logs</span></a>
-        <?php endif; ?>
-
-        <?php if ($role === 'student'): ?>
-        <?php
-        // Check if student is eligible for Multiple Intelligence Survey
-        $student_grade_level = '';
-        try {
-            $sg_stmt = $db->prepare("SELECT grade_level FROM student_profiles WHERE user_id = ?");
-            $sg_stmt->execute([$uid]);
-            $sg_row = $sg_stmt->fetch(PDO::FETCH_ASSOC);
-            $student_grade_level = $sg_row['grade_level'] ?? '';
-        } catch (Exception $e) {}
-        $mi_eligible_grades = ['Grade 11', 'Grade 12', '1st Year College', '2nd Year College', '3rd Year College', '4th Year College'];
-        $show_mi_survey = in_array($student_grade_level, $mi_eligible_grades);
-        ?>
-        <a href="layout.php?page=fill_pds" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='fill_pds'||$page==='view_pds'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-file-alt w-5 text-center"></i><span>Personal Data Sheet</span></a>
-        <div class="counseling-submenu">
-            <button onclick="toggleSubmenu('counseling')" class="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg <?= $page==='book_appointment'||$page==='view_appointments'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-                <div class="flex items-center gap-3">
-                    <i class="fas fa-comments w-5 text-center"></i><span>Counseling Services</span>
-                </div>
-                <i id="counseling-chevron" class="fas fa-chevron-down text-xs transition-transform <?= $page==='book_appointment'||$page==='view_appointments'?'rotate-180':'' ?>"></i>
-            </button>
-            <div id="counseling-submenu" class="<?= $page==='book_appointment'||$page==='view_appointments'?'':'hidden' ?> pl-8 mt-1 space-y-1">
-                <a href="layout.php?page=book_appointment" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='book_appointment'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-                    <i class="fas fa-calendar-plus w-4 text-center"></i><span>Book Appointment</span></a>
-                <a href="layout.php?page=view_appointments" class="flex items-center gap-3 px-3 py-2 rounded-lg <?= $page==='view_appointments'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-                    <i class="fas fa-list w-4 text-center"></i><span>View Appointments</span></a>
-            </div>
-        </div>
-        <?php if($show_mi_survey): ?>
-        <a href="layout.php?page=multiple_intelligence_survey" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='multiple_intelligence_survey'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-brain w-5 text-center"></i><span>Multiple Intelligence Survey</span></a>
-        <?php endif; ?>
-        <?php endif; ?>
-
-        <?php if ($role === 'examinee'): ?>
-        <?php
-        // Check if examinee has completed exam results
-        $has_completed_results = false;
-        try {
-            $completed_check_query = "SELECT id FROM entrance_exam_appointments 
-                                     WHERE user_id = ? 
-                                     AND status = 'completed' 
-                                     AND (total_score IS NOT NULL OR qualified_grade IS NOT NULL)
-                                     LIMIT 1";
-            $completed_check_stmt = $db->prepare($completed_check_query);
-            $completed_check_stmt->execute([$uid]);
-            $has_completed_results = $completed_check_stmt->rowCount() > 0;
-        } catch (Exception $e) {}
-        ?>
-        <!-- Examinee Menu -->
-        <?php if(!$has_completed_results): ?>
-        <a href="layout.php?page=book_exam" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='book_exam'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-calendar-alt w-5 text-center"></i><span>Book Entrance Exam</span></a>
-        <?php else: ?>
-        <a href="layout.php?page=view_exam_results" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='view_exam_results'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-certificate w-5 text-center"></i><span>View Exam Results</span></a>
-        <?php endif; ?>
-        <a href="layout.php?page=view_application" class="flex items-center gap-3 px-3 py-2.5 rounded-lg <?= $page==='view_application'?'bg-white/15 text-white':'text-white/70 hover:bg-white/10 hover:text-white' ?> transition-colors text-sm">
-            <i class="fas fa-file-text w-5 text-center"></i><span>My Application Status</span></a>
-        <?php endif; ?>
-
+            <?php else: ?>
+                <a href="layout.php?page=<?=$link[0]?>" class="portal-nav-link <?=$active?'is-active':''?>" <?=$active?'aria-current="page"':''?>><i class="fas <?=$link[2]?>" aria-hidden="true"></i><span class="<?=$role==='super_admin'?'sa-nav-copy':(in_array($role,['admin','guidance_advocate'],true)?'cw-nav-copy':'')?>"><?=htmlspecialchars($link[1])?><?php if(in_array($role,['admin','guidance_advocate'],true)): $office_nav_hints=['dashboard'=>'Today’s priorities & tasks','manage_counseling'=>'Requests, sessions & follow-ups','manage_exams'=>'Applicants, attendance & results','schedules'=>'Events, holidays & booking limits','manage_announcements'=>'Publish guidance updates','system_settings'=>'Services & homepage notice'];?><small><?=htmlspecialchars($office_nav_hints[$link[0]]??'')?></small><?php endif;?><?php if($role==='super_admin'): $nav_hints=['dashboard'=>'Choose a task','user_management'=>'People, roles & access','academic_settings'=>'School structure & levels','backup_restore'=>'Save or recover records','system_logs'=>'Who did what, and when'];?><small><?=htmlspecialchars($nav_hints[$link[0]]??'')?></small><?php endif;?></span></a>
+            <?php endif;?>
+        <?php endforeach;?></div>
+    <?php endforeach;?>
     </nav>
-
-    <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-white/10">
-        <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-sm font-semibold"><?= $initials ?></div>
-            <div class="flex-1 min-w-0">
-                <div class="text-sm font-medium truncate"><?= htmlspecialchars($first_name.' '.$last_name) ?></div>
-                <div class="text-[10px] text-white/50 uppercase"><?= str_replace('_',' ',$role) ?></div>
-            </div>
-            <a href="../auth/logout.php" class="text-white/50 hover:text-red-400 transition-colors" title="Logout"><i class="fas fa-sign-out-alt"></i></a>
-        </div>
-    </div>
+    <div class="portal-sidebar-footer"><span class="portal-avatar"><?=htmlspecialchars($initials)?></span><span class="portal-user"><strong><?=htmlspecialchars($first_name.' '.$last_name)?></strong><small><?=htmlspecialchars(ucwords(str_replace('_',' ',$role)))?></small></span><a href="../auth/logout.php" aria-label="Log out" title="Log out"><i class="fas fa-arrow-right-from-bracket" aria-hidden="true"></i></a></div>
 </aside>

@@ -1,6 +1,8 @@
 <?php
 
 require_once __DIR__ . '/NotificationService.php';
+require_once __DIR__ . '/DailyBookingLimit.php';
+require_once __DIR__.'/SchoolClosure.php';
 
 class CounselingAppointment {
     private $conn;
@@ -74,6 +76,27 @@ class CounselingAppointment {
         return false;
     }
 
+    /** Serialize capacity checks and student booking inserts so the last slot cannot be overbooked. */
+    public function createWithDailyLimit() {
+        $date=$this->appointment_date;
+        $parsed=is_string($date)?DateTimeImmutable::createFromFormat('!Y-m-d',$date):false;
+        if(!$parsed||$parsed->format('Y-m-d')!==$date)throw new InvalidArgumentException('Please select a valid appointment date.');
+        $locked=$this->conn->query("SELECT GET_LOCK('guidanceversion2_counseling_booking',5)")->fetchColumn();
+        if(!$locked)throw new RuntimeException('Booking is busy. Please try again.');
+        $ownsTransaction=!$this->conn->inTransaction();
+        try{
+            if($ownsTransaction)$this->conn->beginTransaction();
+            if($closure=(new SchoolClosure($this->conn))->forDate($date))throw new RuntimeException('School closed: '.$closure['reason'].'. Please choose another date.');
+            $capacity=(new DailyBookingLimit($this->conn))->isDailyLimitReached($date);
+            if($capacity['is_reached'])throw new RuntimeException('The daily counseling booking limit has been reached for this date. Please choose another date.');
+            $id=$this->create();
+            if(!$id)throw new RuntimeException('Your appointment could not be saved. Please try again.');
+            if($ownsTransaction)$this->conn->commit();
+            return $id;
+        }catch(Throwable $e){if($ownsTransaction&&$this->conn->inTransaction())$this->conn->rollBack();throw $e;}
+        finally{$this->conn->query("SELECT RELEASE_LOCK('guidanceversion2_counseling_booking')");}
+    }
+
     public function hasActiveAppointment($user_id) {
         $query = "SELECT id FROM " . $this->table_name . " 
                   WHERE user_id = ? AND status IN ('pending', 'confirmed', 'in_progress') AND appointment_date >= CURDATE()";
@@ -133,6 +156,37 @@ class CounselingAppointment {
         return $stmt;
     }
 
+    public function getUnassigned() {
+        $query = "SELECT c.*, u.first_name, u.last_name, u.email, sp.student_id, sp.grade_level,
+                         adv.first_name as advocate_first_name, adv.last_name as advocate_last_name
+                  FROM " . $this->table_name . " c
+                  JOIN users u ON c.user_id = u.id
+                  LEFT JOIN student_profiles sp ON u.id = sp.user_id
+                  LEFT JOIN users adv ON c.assigned_advocate_id = adv.id
+                  WHERE (c.assigned_advocate_id IS NULL OR c.assigned_advocate_id = '') 
+                  AND c.status IN ('pending', 'confirmed')
+                  ORDER BY c.appointment_date DESC";
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute();
+        return $stmt;
+    }
+
+    public function getConfirmed() {
+        $query = "SELECT c.*, u.first_name, u.last_name, u.email, sp.student_id, sp.grade_level,
+                         adv.first_name as advocate_first_name, adv.last_name as advocate_last_name
+                  FROM " . $this->table_name . " c
+                  JOIN users u ON c.user_id = u.id
+                  LEFT JOIN student_profiles sp ON u.id = sp.user_id
+                  LEFT JOIN users adv ON c.assigned_advocate_id = adv.id
+                  WHERE c.status = 'confirmed' 
+                  AND c.assigned_advocate_id IS NOT NULL 
+                  AND c.assigned_advocate_id != ''
+                  ORDER BY c.appointment_date DESC";
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute();
+        return $stmt;
+    }
+
     public function getByStatus($status) {
         $query = "SELECT c.*, u.first_name, u.last_name, u.email, sp.student_id, sp.grade_level,
                          adv.first_name as advocate_first_name, adv.last_name as advocate_last_name
@@ -180,7 +234,6 @@ class CounselingAppointment {
         $query = "UPDATE " . $this->table_name . " SET status = ?";
         $params = [$status];
         if ($status === 'confirmed') { $query .= ", confirmed_at = NOW()"; }
-        if ($status === 'completed') { $query .= ", completed_at = NOW()"; }
         $query .= " WHERE id = ?";
         $params[] = $id;
         $stmt = $this->conn->prepare($query);
@@ -255,8 +308,8 @@ class CounselingAppointment {
     public function getAppointmentStats() {
         $query = "SELECT 
                     COUNT(*) as total,
-                    SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
-                    SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END) as confirmed,
+                    SUM(CASE WHEN (assigned_advocate_id IS NULL OR assigned_advocate_id = '') AND status IN ('pending', 'confirmed') THEN 1 ELSE 0 END) as pending,
+                    SUM(CASE WHEN status = 'confirmed' AND assigned_advocate_id IS NOT NULL AND assigned_advocate_id != '' THEN 1 ELSE 0 END) as confirmed,
                     SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
                     SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
                     SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled,

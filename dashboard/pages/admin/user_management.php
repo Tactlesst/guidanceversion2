@@ -56,7 +56,7 @@ if ($_POST) {
                 } else { $error_message = "Failed to create user."; }
             }
         } catch (Exception $e) { $error_message = $e->getMessage(); }
-        if (empty($error_message)) { header("Location: layout.php?page=user_management"); exit(); }
+        if (empty($error_message)) { header("Location: " . portalSaveRedirect("layout.php?page=user_management")); exit(); }
     }
     if (isset($_POST['edit_user'])) {
         try {
@@ -67,7 +67,7 @@ if ($_POST) {
             if ($user_obj->updateUserComplete()) { 
                 $_SESSION['success_message'] = "User updated!"; 
                 logAdminAction('edit_user', "Updated user: {$_POST['first_name']} {$_POST['last_name']}", null, $db);
-                header("Location: layout.php?page=user_management"); exit(); 
+                header("Location: " . portalSaveRedirect("layout.php?page=user_management")); exit(); 
             }
             else $error_message = "Failed to update user.";
         } catch (Exception $e) { $error_message = $e->getMessage(); }
@@ -79,7 +79,7 @@ if ($_POST) {
             $user_obj->resetPassword($_POST['user_id'], $pwd); 
             $_SESSION['success_message'] = "Password reset!"; 
             logAdminAction('reset_password', "Reset password for user ID: {$_POST['user_id']}", null, $db);
-            header("Location: layout.php?page=user_management"); exit(); 
+            header("Location: " . portalSaveRedirect("layout.php?page=user_management")); exit(); 
         }
     }
     if (isset($_POST['import_csv']) && isset($_FILES['csv_file'])) {
@@ -87,7 +87,7 @@ if ($_POST) {
         $fp = $dir . time() . '_' . $_FILES['csv_file']['name'];
         if (move_uploaded_file($_FILES['csv_file']['tmp_name'], $fp)) { $import_obj->processCSV($fp, $_SESSION['user_id']); $_SESSION['success_message'] = "CSV import completed!"; unlink($fp); }
         else $_SESSION['error_message'] = "Upload failed.";
-        header("Location: layout.php?page=user_management"); exit();
+        header("Location: " . portalSaveRedirect("layout.php?page=user_management")); exit();
     }
     if (isset($_POST['generate_sample'])) {
         $sf = $import_obj->generateSampleCSV();
@@ -252,274 +252,50 @@ $role_colors = ['super_admin'=>'purple','admin'=>'red','guidance_advocate'=>'gre
 $role_icons = ['super_admin'=>'fa-crown','admin'=>'fa-user-shield','guidance_advocate'=>'fa-hands-helping','student'=>'fa-user-graduate','examinee'=>'fa-file-alt'];
 ?>
 
-<script src="js/user_management.js" defer></script>
-
-<div class="space-y-6">
-    <!-- Header -->
-    <div class="flex items-center justify-between flex-wrap gap-3">
-        <h1 class="text-2xl font-bold text-gray-800"><i class="fas fa-users-cog mr-2 text-primary"></i>User Management</h1>
-        <div class="flex gap-2">
-            <form method="POST" class="inline"><button type="submit" name="export_users" value="1" class="px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"><i class="fas fa-file-export mr-1"></i>Export</button></form>
-            <button onclick="openModal('importModal')" class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-file-import mr-1"></i>Import</button>
-            <button onclick="openModal('createUserModal')" class="px-3 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark"><i class="fas fa-plus mr-1"></i>Add User</button>
+<link rel="stylesheet" href="../assets/css/user-management.css?v=20261027-2">
+<script src="js/user_management.js?v=20261027-6" defer></script>
+<?php
+$role_names=['student'=>'Students','examinee'=>'Examinees','guidance_advocate'=>'Guidance advocates','admin'=>'Admins / Counselors','super_admin'=>'Superadmins'];
+$role_descriptions=[''=>'Every current user role','student'=>'Enrolled student accounts','examinee'=>'Entrance exam applicants','guidance_advocate'=>'Staff who support counseling','admin'=>'Guidance office administrators','super_admin'=>'System and account administrators'];
+$role_symbols=[''=>'fa-users','student'=>'fa-user-graduate','examinee'=>'fa-clipboard-list','guidance_advocate'=>'fa-hands-holding-circle','admin'=>'fa-user-shield','super_admin'=>'fa-user-gear'];
+$role_counts=[];$total_accounts=0;foreach($user_stats as $stat){$role_counts[$stat['role']]=$stat;$total_accounts+=(int)$stat['count'];}
+?>
+<section class="user-management" aria-labelledby="um-title">
+    <div class="um-heading"><div><p class="um-eyebrow">Account administration</p><h1 id="um-title">User management</h1><p>Manage accounts, roles, and access in one place.</p></div><div class="um-heading-actions"><form method="post"><button name="export_users" value="1" class="um-button um-secondary"><i class="fas fa-arrow-up-from-bracket" aria-hidden="true"></i>Export CSV</button></form><button type="button" class="um-button um-secondary" onclick="openUserDialog('importModal')"><i class="fas fa-arrow-down-to-bracket" aria-hidden="true"></i>Import CSV</button><button type="button" class="um-button um-primary" onclick="openUserDialog('createUserModal')"><i class="fas fa-plus" aria-hidden="true"></i>Add user</button></div></div>
+<?php if($success_message||$error_message):?><script type="application/json" data-portal-feedback><?=json_encode(['success'=>$success_message,'error'=>$error_message],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE)?></script><?php endif;?>
+    <h2 class="um-chooser-title">Which users do you want to manage? <span>Choose a role to see its accounts.</span></h2>
+    <div class="um-role-summary" aria-label="Filter accounts by role">
+    <?php foreach([''=>'All accounts']+$role_names as $value=>$label):$count=$value===''?$total_accounts:(int)($role_counts[$value]['count']??0);?>
+        <button type="button" class="um-role-card <?=$value===''?'is-selected':''?>" data-um-role="<?=$value?>" aria-pressed="<?=$value===''?'true':'false'?>" onclick="chooseUserRole('<?=$value?>')"><span class="um-role-top"><span class="um-role-icon"><i class="fas <?=$role_symbols[$value]?>" aria-hidden="true"></i></span><span class="um-role-selected"><i class="fas fa-circle-check" aria-hidden="true"></i>Selected</span></span><span class="um-role-name"><?=$label?></span><span class="um-role-description"><?=$role_descriptions[$value]?></span><span class="um-role-footer"><span><b><?=number_format($count)?></b> current accounts</span><span class="um-role-open">View <i class="fas fa-arrow-right" aria-hidden="true"></i></span></span></button>
+    <?php endforeach;?></div>
+    <div class="um-workspace" data-role="">
+        <div class="um-tabs" role="tablist" aria-label="Account lists"><button type="button" id="tab-active" role="tab" aria-selected="true" aria-controls="panel-active" class="um-tab is-active" onclick="switchUserTab('active')"><i class="fas fa-users" aria-hidden="true"></i>Current accounts</button><button type="button" id="tab-archived" role="tab" aria-selected="false" aria-controls="panel-archived" tabindex="-1" class="um-tab" onclick="switchUserTab('archived')"><i class="fas fa-box-archive" aria-hidden="true"></i>Archived accounts</button><button type="button" id="tab-imports" role="tab" aria-selected="false" aria-controls="panel-imports" tabindex="-1" class="um-tab" onclick="switchUserTab('imports')"><i class="fas fa-file-arrow-up" aria-hidden="true"></i>Import history</button></div>
+        <div class="um-filters" id="userFilters"><div class="um-search-row"><label class="um-search"><i class="fas fa-magnifying-glass" aria-hidden="true"></i><input type="search" id="searchInput" aria-label="Search accounts" placeholder="Search name, email, or student ID" oninput="debounceSearch()"></label><button type="button" class="um-filter-toggle um-button um-secondary" aria-controls="umFilterFields" aria-expanded="false" onclick="toggleUserFilters(this)"><i class="fas fa-sliders" aria-hidden="true"></i>Filters</button></div>
+            <div class="um-filter-fields" id="umFilterFields"><label>Role<select id="roleFilter" onchange="onRoleFilterChange()"><option value="">All roles</option><option value="student">Student</option><option value="examinee">Examinee</option><option value="guidance_advocate">Guidance advocate</option><option value="admin">Admin / Counselor</option><option value="super_admin">Superadmin</option></select></label><label>Status<select id="statusFilter" onchange="onStatusFilterChange()"><option value="">All statuses</option><option value="1">Active</option><option value="0">Inactive</option></select></label><label>Name starts with<select id="letterFilter" onchange="onLetterFilterChange()"><option value="">Any letter</option><?php foreach(range('A','Z') as $letter):?><option value="<?=$letter?>"><?=$letter?></option><?php endforeach;?></select></label><button type="button" class="um-clear" onclick="clearUserFilters()">Reset filters</button></div>
+            <div id="umMissingIdNotice" class="um-filter-notice hidden">Showing students without an ID.<button type="button" onclick="clearUserFilters()">Clear this filter</button></div>
         </div>
+        <?php foreach(['active','archived'] as $list):$archived=$list==='archived';?>
+        <section id="panel-<?=$list?>" class="um-list-panel <?=$archived?'hidden':''?>" role="tabpanel" aria-labelledby="tab-<?=$list?>">
+            <div class="um-list-heading"><div><span class="um-list-eyebrow">You are viewing</span><h2 id="umListTitle-<?=$list?>"><?=$archived?'Archived accounts':'All current accounts'?></h2><p id="umListHint-<?=$list?>"><?=$archived?'These accounts are archived and cannot sign in. Restore an account to make it available again.':'Current accounts include Active (can sign in) and Inactive (sign-in disabled) users.'?></p></div><button type="button" id="<?=$archived?'bulkUnarchiveBtn':'bulkArchiveBtn'?>" class="um-button <?=$archived?'um-secondary':'um-danger'?> hidden" onclick="<?=$archived?'bulkUnarchiveUsers':'bulkArchiveUsers'?>()"><i class="fas <?=$archived?'fa-rotate-left':'fa-box-archive'?>" aria-hidden="true"></i><?=$archived?'Restore':'Archive'?> selected (<span id="<?=$archived?'archivedSelectedCount':'selectedCount'?>">0</span>)</button></div>
+            <div class="um-table-wrap"><table class="um-user-table" id="<?=$archived?'archivedUsersTable':'activeUsersTable'?>"><caption class="um-sr-only"><?=$archived?'Archived':'Current'?> user accounts</caption><thead><tr><th class="um-check-cell"><input type="checkbox" id="<?=$archived?'selectAllArchived':'selectAllUsers'?>" aria-label="Select all <?=$archived?'archived':'current'?> users on this page" onchange="<?=$archived?'toggleSelectAllArchived':'toggleSelectAll'?>()"></th><th>Account</th><th>Role</th><th>Student ID</th><th>Status</th><th>Joined</th><th class="um-actions-cell">Actions</th></tr></thead><tbody id="<?=$archived?'archivedUsersBody':'activeUsersBody'?>"><tr><td colspan="7" class="um-empty">Loading accounts…</td></tr></tbody></table></div>
+            <div class="um-pagination"><span id="<?=$list?>PageInfo" role="status"></span><div class="um-pagination-controls"><label class="um-page-size"><span>Rows</span><select id="<?=$list?>ItemsPerPage" onchange="onItemsPerPageChange(event)" aria-label="<?=$archived?'Archived':'Current'?> accounts per page"><option value="10">10</option><option value="20">20</option><option value="30">30</option><option value="50">50</option></select></label><button type="button" id="<?=$list?>PrevBtn" onclick="<?=$list?>ChangePage(-1)" class="um-page-button" aria-label="Previous <?=$list?> accounts page"><i class="fas fa-chevron-left" aria-hidden="true"></i><span>Previous</span></button><span id="<?=$list?>PageNums" class="um-page-numbers"></span><span id="<?=$list?>PageIndicator" class="um-page-indicator"></span><button type="button" id="<?=$list?>NextBtn" onclick="<?=$list?>ChangePage(1)" class="um-page-button" aria-label="Next <?=$list?> accounts page"><span>Next</span><i class="fas fa-chevron-right" aria-hidden="true"></i></button></div></div>
+        </section><?php endforeach;?>
+        <section id="panel-imports" class="um-list-panel hidden" role="tabpanel" aria-labelledby="tab-imports"><div class="um-list-heading"><div><h2>Recent imports</h2><p>The latest 10 import jobs and their results.</p></div><button type="button" class="um-button um-secondary" onclick="openUserDialog('importModal')">Import users</button></div><div class="um-import-wrap"><table class="um-import-table"><thead><tr><th>Date</th><th>File</th><th>Type</th><th>Total</th><th>Imported</th><th>Failed</th><th>Status</th><th>Imported by</th></tr></thead><tbody>
+        <?php if($import_history->rowCount()>0):while($imp=$import_history->fetch(PDO::FETCH_ASSOC)):?><tr><td data-label="Date"><?=date('M j, Y g:i A',strtotime($imp['created_at']))?></td><td data-label="File"><?=htmlspecialchars($imp['filename'])?></td><td data-label="Type"><?=htmlspecialchars($imp['file_type'])?></td><td data-label="Total"><?=(int)$imp['total_records']?></td><td data-label="Imported"><?=(int)$imp['successful_imports']?></td><td data-label="Failed"><?=(int)$imp['failed_imports']?></td><td data-label="Status"><?=htmlspecialchars(ucfirst($imp['import_status']))?></td><td data-label="Imported by"><?=htmlspecialchars($imp['first_name'].' '.$imp['last_name'])?></td></tr><?php endwhile;else:?><tr><td colspan="8" class="um-empty"><span class="um-empty-icon"><i class="fas fa-file-arrow-up" aria-hidden="true"></i></span><strong>No imports yet</strong><p>Imported files and their results will appear here.</p></td></tr><?php endif;?></tbody></table></div></section>
     </div>
+</section>
 
-    <!-- Alerts -->
-    <?php if ($success_message): ?>
-    <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-center"><i class="fas fa-check-circle mr-2"></i><?= htmlspecialchars($success_message) ?></div>
-    <?php endif; ?>
-    <?php if ($error_message): ?>
-    <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center"><i class="fas fa-exclamation-circle mr-2"></i><?= htmlspecialchars($error_message) ?></div>
-    <?php endif; ?>
-
-    <!-- Stats -->
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <?php foreach ($user_stats as $stat): $c = $role_colors[$stat['role']]??'gray'; $ic = $role_icons[$stat['role']]??'fa-user'; ?>
-        <div class="bg-white rounded-xl shadow-sm p-4 text-center border-l-4 border-<?= $c ?>-500">
-            <i class="fas <?= $ic ?> text-<?= $c ?>-500 text-lg mb-1"></i>
-            <div class="text-2xl font-bold text-gray-800"><?= $stat['count'] ?></div>
-            <div class="text-xs text-gray-500 capitalize"><?= str_replace('_',' ',$stat['role']) ?></div>
-            <div class="text-xs text-green-600"><?= $stat['active_count'] ?> active</div>
-        </div>
-        <?php endforeach; ?>
-    </div>
-
-    <!-- Search & Tabs -->
-    <div class="bg-white rounded-xl shadow-sm p-4">
-        <div class="flex flex-wrap gap-3 items-center">
-            <input type="text" id="searchInput" placeholder="Search name, email, student ID..." class="flex-1 min-w-[200px] px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none" oninput="debounceSearch()">
-            <select id="roleFilter" class="px-3 py-2 border rounded-lg text-sm" onchange="onRoleFilterChange()">
-                <option value="">All Roles</option><option value="super_admin">Super Admin</option><option value="admin">Admin</option><option value="guidance_advocate">Guidance Advocate</option><option value="student">Student</option><option value="examinee">Examinee</option>
-            </select>
-            <select id="statusFilter" class="px-3 py-2 border rounded-lg text-sm" onchange="onStatusFilterChange()">
-                <option value="">All Status</option><option value="1">Active</option><option value="0">Inactive</option>
-            </select>
-            <select id="letterFilter" class="px-2 py-1.5 border rounded text-xs" onchange="onLetterFilterChange()">
-                <option value="">All Letters</option>
-                <?php foreach(range('A','Z') as $letter): ?>
-                <option value="<?= $letter ?>"><?= $letter ?></option>
-                <?php endforeach; ?>
-            </select>
-            <div class="flex bg-gray-100 rounded-lg p-1">
-                <button onclick="switchUserTab('active')" id="tab-active" class="px-3 py-1 text-sm rounded-md bg-primary text-white">Active</button>
-                <button onclick="switchUserTab('archived')" id="tab-archived" class="px-3 py-1 text-sm rounded-md text-gray-600">Archived</button>
-                <button onclick="switchUserTab('imports')" id="tab-imports" class="px-3 py-1 text-sm rounded-md text-gray-600">Imports</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Active Users -->
-    <div id="panel-active" class="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div class="p-3 border-b flex items-center justify-between bg-gray-50">
-            <button type="button" onclick="bulkArchiveUsers()" id="bulkArchiveBtn" class="px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 hidden">
-                <i class="fas fa-archive mr-1"></i>Archive Selected (<span id="selectedCount">0</span>)
-            </button>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm table-fixed" id="activeUsersTable">
-                <colgroup><col class="w-[5%]"><col class="w-[20%]"><col class="w-[20%]"><col class="w-[12%]"><col class="w-[10%]"><col class="w-[10%]"><col class="w-[12%]"><col class="w-[11%]"></colgroup>
-                <thead class="bg-gray-50 text-gray-600 text-left"><tr><th class="px-4 py-3"><input type="checkbox" id="selectAllUsers" onchange="toggleSelectAll()" class="rounded"></th><th class="px-4 py-3">Name</th><th class="px-4 py-3">Email</th><th class="px-4 py-3">Role</th><th class="px-4 py-3">Student ID</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Created</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
-                <tbody id="activeUsersBody" class="divide-y divide-gray-100"></tbody>
-            </table>
-        </div>
-        <!-- Pagination -->
-        <div class="px-4 py-3 border-t flex flex-col items-center gap-2">
-            <span id="activePageInfo" class="text-sm text-gray-500"></span>
-            <div class="flex gap-1 items-center">
-                <select id="activeItemsPerPage" class="px-2 py-1.5 text-sm border rounded" onchange="onItemsPerPageChange()">
-                    <option value="10">10</option>
-                    <option value="20">20</option>
-                    <option value="30">30</option>
-                    <option value="50">50</option>
-                </select>
-                <button onclick="activeChangePage(-1)" id="activePrevBtn" class="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fas fa-chevron-left mr-1"></i>Prev</button>
-                <span id="activePageNums" class="flex gap-1"></span>
-                <button onclick="activeChangePage(1)" id="activeNextBtn" class="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">Next<i class="fas fa-chevron-right ml-1"></i></button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Archived Users -->
-    <div id="panel-archived" class="bg-white rounded-xl shadow-sm overflow-hidden hidden">
-        <div class="p-4 bg-blue-50 text-blue-700 text-sm"><i class="fas fa-info-circle mr-1"></i>Archived users are inactive and cannot log in.</div>
-        <div class="p-3 border-b flex items-center justify-between bg-gray-50">
-            <button type="button" onclick="bulkUnarchiveUsers()" id="bulkUnarchiveBtn" class="px-3 py-1.5 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200 hidden">
-                <i class="fas fa-undo mr-1"></i>Restore Selected (<span id="archivedSelectedCount">0</span>)
-            </button>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm table-fixed">
-                <colgroup><col class="w-[5%]"><col class="w-[30%]"><col class="w-[30%]"><col class="w-[20%]"><col class="w-[15%]"></colgroup>
-                <thead class="bg-gray-50 text-gray-600 text-left"><tr><th class="px-4 py-3"><input type="checkbox" id="selectAllArchived" onchange="toggleSelectAllArchived()" class="rounded"></th><th class="px-4 py-3">Name</th><th class="px-4 py-3">Email</th><th class="px-4 py-3">Role</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
-                <tbody id="archivedUsersBody" class="divide-y divide-gray-100"></tbody>
-            </table>
-        </div>
-        <!-- Archived Pagination -->
-        <div class="px-4 py-3 border-t flex flex-col items-center gap-2">
-            <span id="archivedPageInfo" class="text-sm text-gray-500"></span>
-            <div class="flex gap-1 items-center">
-                <select id="archivedItemsPerPage" class="px-2 py-1.5 text-sm border rounded" onchange="onItemsPerPageChange()">
-                    <option value="10">10</option>
-                    <option value="20">20</option>
-                    <option value="30">30</option>
-                    <option value="50">50</option>
-                </select>
-                <button onclick="archivedChangePage(-1)" id="archivedPrevBtn" class="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fas fa-chevron-left mr-1"></i>Prev</button>
-                <span id="archivedPageNums" class="flex gap-1"></span>
-                <button onclick="archivedChangePage(1)" id="archivedNextBtn" class="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">Next<i class="fas fa-chevron-right ml-1"></i></button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Import History -->
-    <div id="panel-imports" class="bg-white rounded-xl shadow-sm overflow-hidden hidden">
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm table-fixed">
-                <colgroup><col class="w-[16%]"><col class="w-[20%]"><col class="w-[10%]"><col class="w-[8%]"><col class="w-[8%]"><col class="w-[8%]"><col class="w-[10%]"><col class="w-[20%]"></colgroup>
-                <thead class="bg-gray-50 text-gray-600 text-left"><tr><th class="px-4 py-3">Date</th><th class="px-4 py-3">File</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Total</th><th class="px-4 py-3">Success</th><th class="px-4 py-3">Failed</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">By</th></tr></thead>
-                <tbody class="divide-y divide-gray-100">
-                <?php if ($import_history->rowCount() > 0): while ($imp = $import_history->fetch(PDO::FETCH_ASSOC)): ?>
-                    <tr class="hover:bg-gray-50">
-                        <td class="px-4 py-3 text-gray-500 text-xs"><?= date('M d, Y g:i A', strtotime($imp['created_at'])) ?></td>
-                        <td class="px-4 py-3"><?= htmlspecialchars($imp['filename']) ?></td>
-                        <td class="px-4 py-3 capitalize"><?= $imp['file_type'] ?></td>
-                        <td class="px-4 py-3"><?= $imp['total_records'] ?></td>
-                        <td class="px-4 py-3 text-green-600"><?= $imp['successful_imports'] ?></td>
-                        <td class="px-4 py-3 text-red-600"><?= $imp['failed_imports'] ?></td>
-                        <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full text-xs <?= $imp['import_status']==='completed'?'bg-green-100 text-green-700':'bg-yellow-100 text-yellow-700' ?>"><?= $imp['import_status'] ?></span></td>
-                        <td class="px-4 py-3"><?= htmlspecialchars($imp['first_name'].' '.$imp['last_name']) ?></td>
-                    </tr>
-                <?php endwhile; else: ?>
-                    <tr><td colspan="8" class="px-4 py-8 text-center text-gray-400">No import history</td></tr>
-                <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
 
 <!-- Create User Modal -->
-<div id="createUserModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div class="bg-primary text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
-            <h3 class="text-lg font-bold"><i class="fas fa-user-plus mr-2"></i>Create User</h3>
-            <button onclick="closeModal('createUserModal')" class="text-white/80 hover:text-white"><i class="fas fa-times"></i></button>
-        </div>
-        <form method="POST" class="p-6 space-y-4">
-            <input type="hidden" name="create_user" value="1">
-            <?php if (!empty($completed_examinees)): ?>
-            <div class="bg-blue-50 rounded-lg p-4 space-y-3">
-                <label class="flex items-center gap-2 text-sm font-medium text-blue-800">
-                    <input type="checkbox" id="convertExaminee" onchange="toggleExamineeConversion()" class="rounded"> Convert examinee to student
-                </label>
-                <div id="examineeFields" class="hidden">
-                    <select name="completed_examinee_id" id="examineeSelect" onchange="fillExamineeData()" class="w-full px-3 py-2 border rounded-lg text-sm">
-                        <option value="">Select examinee...</option>
-                        <?php foreach ($completed_examinees as $ex): ?>
-                        <option value="<?= $ex['id'] ?>" data-first="<?= htmlspecialchars($ex['first_name']) ?>" data-middle="<?= htmlspecialchars($ex['middle_name']??'') ?>" data-last="<?= htmlspecialchars($ex['last_name']) ?>" data-email="<?= htmlspecialchars($ex['email']??'') ?>"><?= htmlspecialchars($ex['last_name'].', '.$ex['first_name']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-            </div>
-            <?php endif; ?>
-            <div class="grid grid-cols-2 gap-4">
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">First Name *</label><input type="text" name="first_name" id="create_first_name" required class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Last Name *</label><input type="text" name="last_name" id="create_last_name" required class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Middle Name</label><input type="text" name="middle_name" id="create_middle_name" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Email</label><input type="email" name="email" id="create_email" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-                    <select name="role" id="createRole" required onchange="toggleStudentFields()" class="w-full px-3 py-2 border rounded-lg text-sm">
-                        <option value="student">Student</option><option value="examinee">Examinee</option><option value="guidance_advocate">Guidance Advocate</option><option value="admin">Admin</option><option value="super_admin">Super Admin</option>
-                    </select>
-                </div>
-                <div id="positionField"><label class="block text-sm font-medium text-gray-700 mb-1">Position</label><input type="text" name="position" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-            </div>
-            <div id="studentIdField" class="grid grid-cols-2 gap-4">
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Student ID</label><input type="text" name="student_id" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Password</label><input type="password" name="password" placeholder="Default: password123" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-            </div>
-            <div class="flex justify-end gap-3 pt-2">
-                <button type="button" onclick="closeModal('createUserModal')" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancel</button>
-                <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark">Create User</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Edit User Modal -->
-<div id="editUserModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div class="bg-green-600 text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
-            <h3 class="text-lg font-bold"><i class="fas fa-user-edit mr-2"></i>Edit User</h3>
-            <button onclick="closeModal('editUserModal')" class="text-white/80 hover:text-white"><i class="fas fa-times"></i></button>
-        </div>
-        <form method="POST" class="p-6 space-y-4">
-            <input type="hidden" name="edit_user" value="1">
-            <input type="hidden" name="user_id" id="edit_user_id">
-            <div class="grid grid-cols-2 gap-4">
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">First Name *</label><input type="text" name="first_name" id="edit_first_name" required class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Last Name *</label><input type="text" name="last_name" id="edit_last_name" required class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Middle Name</label><input type="text" name="middle_name" id="edit_middle_name" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Email</label><input type="email" name="email" id="edit_email" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-                    <select name="role" id="edit_role" required class="w-full px-3 py-2 border rounded-lg text-sm">
-                        <option value="student">Student</option><option value="examinee">Examinee</option><option value="guidance_advocate">Guidance Advocate</option><option value="admin">Admin</option><option value="super_admin">Super Admin</option>
-                    </select>
-                </div>
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Student ID</label><input type="text" name="student_id" id="edit_student_id" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-            </div>
-            <div class="flex items-center gap-2"><input type="checkbox" name="is_active" id="edit_is_active" value="1" class="rounded"><label for="edit_is_active" class="text-sm text-gray-700">Active</label></div>
-            <div class="flex justify-end gap-3 pt-2">
-                <button type="button" onclick="closeModal('editUserModal')" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancel</button>
-                <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">Save Changes</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Reset Password Modal -->
-<div id="resetPasswordModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        <div class="bg-orange-500 text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
-            <h3 class="text-lg font-bold"><i class="fas fa-key mr-2"></i>Reset Password</h3>
-            <button onclick="closeModal('resetPasswordModal')" class="text-white/80 hover:text-white"><i class="fas fa-times"></i></button>
-        </div>
-        <form method="POST" class="p-6 space-y-4">
-            <input type="hidden" name="reset_password" value="1">
-            <input type="hidden" name="user_id" id="reset_user_id">
-            <p class="text-sm text-gray-600">Reset password for: <strong id="reset_user_name"></strong></p>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">New Password</label><input type="password" name="new_password" placeholder="Min 8 chars (default: password123)" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-            <div class="flex justify-end gap-3 pt-2">
-                <button type="button" onclick="closeModal('resetPasswordModal')" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancel</button>
-                <button type="submit" class="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600">Reset Password</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Import Modal -->
-<div id="importModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        <div class="bg-blue-600 text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
-            <h3 class="text-lg font-bold"><i class="fas fa-file-import mr-2"></i>Import Users</h3>
-            <button onclick="closeModal('importModal')" class="text-white/80 hover:text-white"><i class="fas fa-times"></i></button>
-        </div>
-        <form method="POST" enctype="multipart/form-data" class="p-6 space-y-4">
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">CSV File</label><input type="file" name="csv_file" accept=".csv" required class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-            <p class="text-xs text-gray-500">CSV format: password, email, first_name, middle_name, last_name, student_id, role</p>
-            <div class="flex justify-end gap-3">
-                <button type="submit" name="generate_sample" value="1" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"><i class="fas fa-download mr-1"></i>Sample CSV</button>
-                <button type="submit" name="import_csv" value="1" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-upload mr-1"></i>Import</button>
-            </div>
-        </form>
-    </div>
-</div>
+<div id="createUserModal" class="um-modal pd-overlay hidden" data-portal-dialog data-dialog-tone="add" role="dialog" aria-modal="true" aria-labelledby="createUserModalTitle" aria-describedby="createUserModalHint">
+    <div class="pd-card"><div class="pd-header"><span class="pd-heading-icon"><i class="fas fa-user-plus" aria-hidden="true"></i></span><div class="pd-heading-copy"><h2 id="createUserModalTitle">Add a user</h2><p id="createUserModalHint">Create an account and choose what this person can access.</p></div><button type="button" class="pd-close" aria-label="Close add a user" onclick="closeUserDialog('createUserModal')"><i class="fas fa-xmark" aria-hidden="true"></i></button></div>
+    <form data-portal-save method="POST" ><input type="hidden" name="create_user" value="1"><div class="pd-body"><p class="pd-required-note">Fields marked * are required.</p><?php if (!empty($completed_examinees)): ?><div class="pd-callout"><label for="convertExaminee" style="display:flex;align-items:center;gap:9px;font-weight:600"><input type="checkbox" id="convertExaminee" onchange="toggleExamineeConversion()">Convert an examinee to a student</label><p class="pd-hint">Select an examinee with a completed exam to reuse their details.</p><div id="examineeFields" class="hidden pd-field" style="margin-top:12px"><label for="examineeSelect">Completed examinee</label><select name="completed_examinee_id" id="examineeSelect" onchange="fillExamineeData()"><option value="">Select examinee...</option><?php foreach($completed_examinees as $ex):?><option value="<?= $ex['id'] ?>" data-first="<?=htmlspecialchars($ex['first_name'],ENT_QUOTES)?>" data-middle="<?=htmlspecialchars($ex['middle_name']??'',ENT_QUOTES)?>" data-last="<?=htmlspecialchars($ex['last_name'],ENT_QUOTES)?>" data-email="<?=htmlspecialchars($ex['email']??'',ENT_QUOTES)?>"><?=htmlspecialchars($ex['last_name'].', '.$ex['first_name'])?></option><?php endforeach;?></select></div></div><?php endif;?><fieldset class="pd-group"><legend>Personal details</legend><div class="pd-grid"><div class="pd-field"><label for="create_first_name">First name *</label><input type="text" name="first_name" id="create_first_name" required autocomplete="given-name"></div><div class="pd-field"><label for="create_last_name">Last name *</label><input type="text" name="last_name" id="create_last_name" required autocomplete="family-name"></div></div><div class="pd-grid"><div class="pd-field"><label for="create_middle_name">Middle name <span class=pd-optional>Optional</span></label><input type="text" name="middle_name" id="create_middle_name" autocomplete="additional-name"></div><div class="pd-field"><label for="create_email">Email</label><input type="email" name="email" id="create_email" autocomplete="email" aria-describedby="create_email-hint"><p class=pd-hint><span id="create_email-hint">Required for staff and examinee accounts.</span></p></div></div></fieldset><fieldset class="pd-group"><legend>Account & access</legend><div class="pd-grid"><div class="pd-field"><label for="createRole">Account role *</label><select name="role" id="createRole" required onchange="toggleStudentFields()"><option value="student">Student</option><option value="examinee">Examinee</option><option value="guidance_advocate">Guidance advocate</option><option value="admin">Admin / Counselor</option><option value="super_admin">Superadmin</option></select><p class="pd-hint">Controls which pages this person can access.</p></div><div id="positionField"><div class="pd-field"><label for="create_position">Position <span class=pd-optional>Optional</span></label><input type="text" name="position" id="create_position" ></div></div></div><div id="studentIdField" class="pd-grid" style="margin-top:16px"><div class="pd-field"><label for="create_student_id">Student ID</label><input type="text" name="student_id" id="create_student_id" ><p class=pd-hint>Use the official school ID. Required when converting an examinee.</p></div></div><div class="pd-grid"><div class="pd-field pd-span"><label for="create_password">Initial password</label><div class="pd-password"><input type="password" name="password" id="create_password" autocomplete="new-password" ><button type="button" data-password-toggle="create_password" aria-controls="create_password" aria-pressed="false">Show</button></div><p class="pd-hint" id="create_password-hint">Leave blank to use the default: password123. Share it with the account holder.</p></div></div></fieldset></div><div class="pd-footer"><button type="button" class="pd-button" onclick="closeUserDialog('createUserModal')">Cancel</button><button type="submit" class="pd-button pd-button-primary">Create account</button></div></form></div></div>
+<div id="editUserModal" class="um-modal pd-overlay hidden" data-portal-dialog data-dialog-tone="edit" role="dialog" aria-modal="true" aria-labelledby="editUserModalTitle" aria-describedby="editUserModalHint">
+    <div class="pd-card"><div class="pd-header"><span class="pd-heading-icon"><i class="fas fa-user-pen" aria-hidden="true"></i></span><div class="pd-heading-copy"><h2 id="editUserModalTitle">Edit account details</h2><p id="editUserModalHint">Update this person’s information, role, and sign-in access.</p></div><button type="button" class="pd-close" aria-label="Close edit account details" onclick="closeUserDialog('editUserModal')"><i class="fas fa-xmark" aria-hidden="true"></i></button></div>
+    <form data-portal-save method="POST" ><input type="hidden" name="edit_user" value="1"><input type="hidden" name="user_id" id="edit_user_id"><div class="pd-body"><p class="pd-required-note">Fields marked * are required.</p><fieldset class="pd-group"><legend>Personal details</legend><div class="pd-grid"><div class="pd-field"><label for="edit_first_name">First name *</label><input type="text" name="first_name" id="edit_first_name" required autocomplete="given-name"></div><div class="pd-field"><label for="edit_last_name">Last name *</label><input type="text" name="last_name" id="edit_last_name" required autocomplete="family-name"></div></div><div class="pd-grid"><div class="pd-field"><label for="edit_middle_name">Middle name <span class=pd-optional>Optional</span></label><input type="text" name="middle_name" id="edit_middle_name" ></div><div class="pd-field"><label for="edit_email">Email</label><input type="email" name="email" id="edit_email" autocomplete="email"></div></div></fieldset><fieldset class="pd-group"><legend>Account & access</legend><div class="pd-grid"><div class="pd-field"><label for="edit_role">Account role *</label><select name="role" id="edit_role" required><option value="student">Student</option><option value="examinee">Examinee</option><option value="guidance_advocate">Guidance advocate</option><option value="admin">Admin / Counselor</option><option value="super_admin">Superadmin</option></select><p class="pd-hint">Controls which pages this person can access.</p></div><div class="pd-field"><label for="edit_student_id">Student ID</label><input type="text" name="student_id" id="edit_student_id" ><p class=pd-hint>Used for student accounts.</p></div></div><label class="pd-status" for="edit_is_active" style="margin-top:17px"><input type="checkbox" name="is_active" id="edit_is_active" value="1"><span><strong>Allow sign-in</strong><small>Checked: this account can sign in. Unchecked: sign-in is disabled.</small></span></label></fieldset></div><div class="pd-footer"><button type="button" class="pd-button" onclick="closeUserDialog('editUserModal')">Cancel</button><button type="submit" class="pd-button pd-button-primary">Save changes</button></div></form></div></div>
+<div id="resetPasswordModal" class="um-modal pd-overlay hidden" data-portal-dialog data-dialog-tone="security" role="dialog" aria-modal="true" aria-labelledby="resetPasswordModalTitle" aria-describedby="resetPasswordModalHint">
+    <div class="pd-card pd-card-small"><div class="pd-header"><span class="pd-heading-icon"><i class="fas fa-key" aria-hidden="true"></i></span><div class="pd-heading-copy"><h2 id="resetPasswordModalTitle">Reset password</h2><p id="resetPasswordModalHint">Replace the current password with a new one.</p></div><button type="button" class="pd-close" aria-label="Close reset password" onclick="closeUserDialog('resetPasswordModal')"><i class="fas fa-xmark" aria-hidden="true"></i></button></div>
+    <form data-portal-save method="POST" ><input type="hidden" name="reset_password" value="1"><input type="hidden" name="user_id" id="reset_user_id"><div class="pd-body"><div class="pd-callout pd-callout-warning"><strong>You are resetting the password for</strong><span id="reset_user_name" class="pd-account-name"></span></div><div class="pd-field pd-span"><label for="reset_new_password">New password *</label><div class="pd-password"><input type="password" name="new_password" id="reset_new_password" autocomplete="new-password" required minlength="8" aria-describedby="reset_new_password-hint"><button type="button" data-password-toggle="reset_new_password" aria-controls="reset_new_password" aria-pressed="false">Show</button></div><p class="pd-hint" id="reset_new_password-hint">Use at least 8 characters. The account holder will need this new password to sign in.</p></div></div><div class="pd-footer"><button type="button" class="pd-button" onclick="closeUserDialog('resetPasswordModal')">Cancel</button><button type="submit" class="pd-button pd-button-primary">Reset password</button></div></form></div></div>
+<div id="importModal" class="um-modal pd-overlay hidden" data-portal-dialog data-dialog-tone="import" role="dialog" aria-modal="true" aria-labelledby="importModalTitle" aria-describedby="importModalHint">
+    <div class="pd-card pd-card-small"><div class="pd-header"><span class="pd-heading-icon"><i class="fas fa-file-arrow-up" aria-hidden="true"></i></span><div class="pd-heading-copy"><h2 id="importModalTitle">Import users from CSV</h2><p id="importModalHint">Add multiple accounts using the provided spreadsheet template.</p></div><button type="button" class="pd-close" aria-label="Close import users from csv" onclick="closeUserDialog('importModal')"><i class="fas fa-xmark" aria-hidden="true"></i></button></div>
+    <form data-portal-save method="POST" enctype="multipart/form-data"><div class="pd-body"><div class="pd-callout"><strong>Start with the sample CSV</strong>Download the template, fill in the user details, then upload the completed file.</div><div class="pd-upload pd-field"><label for="userCsvFile">CSV file *</label><input type="file" name="csv_file" id="userCsvFile" accept=".csv" required aria-describedby="userCsvHint"><p class="pd-hint" id="userCsvHint">Choose a .csv file with one user per row.</p></div><p class="pd-schema">Column order: password, email, first_name, middle_name, last_name, student_id, role.</p><button type="submit" name="generate_sample" value="1" data-full-navigation formnovalidate class="pd-button" style="margin-top:16px"><i class="fas fa-download" aria-hidden="true"></i>Download sample CSV</button></div><div class="pd-footer"><button type="button" class="pd-button" onclick="closeUserDialog('importModal')">Cancel</button><button type="submit" name="import_csv" value="1" class="pd-button pd-button-primary">Import users</button></div></form></div></div>

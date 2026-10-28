@@ -54,10 +54,7 @@ class SystemSettings {
     }
 
     public function getHomepageAnnouncement() {
-        try {
-            $stmt = $this->conn->prepare("SELECT * FROM announcements WHERE is_active = 1 AND location = '__HOMEPAGE__' ORDER BY updated_at DESC LIMIT 1");
-            $stmt->execute();
-            return $stmt->rowCount() > 0 ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
-        } catch (Exception $e) { return null; }
+        require_once __DIR__.'/AnnouncementPublication.php';
+        try {return (new AnnouncementPublication($this->conn))->featured();}catch(Exception $e){return null;}
     }
 }

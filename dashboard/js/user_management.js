@@ -1,3 +1,9 @@
+function userAlert(...args){return window.PortalDialogs?window.PortalDialogs.fire(...args):Swal.fire(...args);}
+let userRowsRequest = {active:0,archived:0};
+let userActionPopover = null;
+let userDialogFocus = null;
+let activeUserDialog = null;
+const userRoleNames = {super_admin:'Superadmin',admin:'Admin / Counselor',guidance_advocate:'Guidance advocate',student:'Student',examinee:'Examinee'};
 // User Management JavaScript
 const BASE = 'layout.php?page=user_management';
 let searchTimer;
@@ -10,6 +16,7 @@ const RC_MAP = {'super_admin':'purple','admin':'red','guidance_advocate':'green'
 function toggleStudentFields() {
     const role = document.getElementById('createRole').value;
     document.getElementById('studentIdField').style.display = role==='student' ? 'grid' : 'none';
+    document.getElementById('create_email').required=role!=='student';
     document.getElementById('positionField').style.display = ['admin','guidance_advocate','super_admin'].includes(role) ? 'block' : 'none';
 }
 
@@ -39,52 +46,52 @@ function editUser(data) {
     document.getElementById('edit_role').value = data.role || 'student';
     document.getElementById('edit_student_id').value = data.student_id || '';
     document.getElementById('edit_is_active').checked = data.is_active == 1;
-    openModal('editUserModal');
+    openUserDialog('editUserModal');
 }
 
 function openResetPassword(id, name) {
     document.getElementById('reset_user_id').value = id;
     document.getElementById('reset_user_name').textContent = name;
-    openModal('resetPasswordModal');
+    openUserDialog('resetPasswordModal');
 }
 
 function archiveUser(id, name) {
-    Swal.fire({ title: 'Archive User?', html: `Are you sure you want to archive <strong>${name}</strong>?`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#dc2626', confirmButtonText: 'Archive', cancelButtonText: 'Cancel' })
+    userAlert({ title: 'Archive User?', html: `Are you sure you want to archive <strong>${esc(name)}</strong>?`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#dc2626', confirmButtonText: 'Archive', cancelButtonText: 'Cancel' })
     .then(r => { 
         if (r.isConfirmed) {
             fetch(BASE+'&action=archive&id='+id)
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    Swal.fire('Archived!','User has been archived.','success').then(()=>location.reload());
+                    userAlert('Archived!','User has been archived.','success').then(()=>location.reload());
                 } else {
-                    Swal.fire('Error', data.error || 'Failed to archive user', 'error');
+                    userAlert('Error', data.error || 'Failed to archive user', 'error');
                 }
             })
             .catch(err => {
                 console.error('Archive error:', err);
-                Swal.fire('Error', 'Failed to archive user. Check console for details.', 'error');
+                userAlert('Error', 'Failed to archive user. Check console for details.', 'error');
             });
         }
     });
 }
 
 function unarchiveUser(id, name) {
-    Swal.fire({ title: 'Restore User?', html: `Restore <strong>${name}</strong>?`, icon: 'question', showCancelButton: true, confirmButtonColor: '#16a34a', confirmButtonText: 'Restore' })
+    userAlert({ title: 'Restore User?', html: `Restore <strong>${esc(name)}</strong>?`, icon: 'question', showCancelButton: true, confirmButtonColor: '#16a34a', confirmButtonText: 'Restore' })
     .then(r => { 
         if (r.isConfirmed) {
             fetch(BASE+'&action=unarchive&id='+id)
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    Swal.fire('Restored!','User has been restored.','success').then(()=>location.reload());
+                    userAlert('Restored!','User has been restored.','success').then(()=>location.reload());
                 } else {
-                    Swal.fire('Error', data.error || 'Failed to restore user', 'error');
+                    userAlert('Error', data.error || 'Failed to restore user', 'error');
                 }
             })
             .catch(err => {
                 console.error('Restore error:', err);
-                Swal.fire('Error', 'Failed to restore user. Check console for details.', 'error');
+                userAlert('Error', 'Failed to restore user. Check console for details.', 'error');
             });
         }
     });
@@ -109,12 +116,12 @@ function toggleStatus(id) {
             // Force reload with timestamp to prevent caching
             window.location.href = BASE + '&t=' + new Date().getTime();
         } else {
-            Swal.fire('Error', data.error || 'Failed to toggle status', 'error');
+            userAlert('Error', data.error || 'Failed to toggle status', 'error');
         }
     })
     .catch(err => {
         console.error('Toggle status error:', err);
-        Swal.fire('Error', 'Failed to toggle status. Check console for details.', 'error');
+        userAlert('Error', 'Failed to toggle status. Check console for details.', 'error');
     });
 }
 
@@ -129,92 +136,17 @@ function debounceSearch() {
     }, 300);
 }
 
-function onRoleFilterChange() {
-    currentFilter = ''; // Clear the missing_id filter when role changes
-    activePage = 1;
-    fetchActiveUsers();
-}
+function onRoleFilterChange() {currentFilter='';refreshUserFilters();}
 
-function onStatusFilterChange() {
-    activePage = 1;
-    archivedPage = 1;
-    fetchActiveUsers();
-    const isArchivedVisible = !document.getElementById('panel-archived').classList.contains('hidden');
-    if (isArchivedVisible) fetchArchivedUsers();
-}
+function onStatusFilterChange() {refreshUserFilters();}
 
-function onLetterFilterChange() {
-    activePage = 1;
-    archivedPage = 1;
-    fetchActiveUsers();
-    const isArchivedVisible = !document.getElementById('panel-archived').classList.contains('hidden');
-    if (isArchivedVisible) fetchArchivedUsers();
-}
+function onLetterFilterChange() {refreshUserFilters();}
 
-function onItemsPerPageChange() {
-    const source = event.target.id;
-    const value = parseInt(event.target.value);
-    itemsPerPage = value;
-    
-    // Sync pagination selectors
-    document.getElementById('activeItemsPerPage').value = value;
-    document.getElementById('archivedItemsPerPage').value = value;
-    
-    activePage = 1;
-    archivedPage = 1;
-    fetchActiveUsers();
-    const isArchivedVisible = !document.getElementById('panel-archived').classList.contains('hidden');
-    if (isArchivedVisible) fetchArchivedUsers();
-}
+function onItemsPerPageChange(event) {itemsPerPage=Number(event.target.value);document.getElementById('activeItemsPerPage').value=itemsPerPage;document.getElementById('archivedItemsPerPage').value=itemsPerPage;refreshUserFilters();}
 
-function fetchActiveUsers() {
-    const q = document.getElementById('searchInput').value;
-    const role = document.getElementById('roleFilter').value;
-    const status = document.getElementById('statusFilter').value;
-    const letter = document.getElementById('letterFilter').value;
-    const url = BASE + `&action=fetch_active&p=${activePage}&per=${itemsPerPage}&q=${encodeURIComponent(q)}&role=${encodeURIComponent(role)}&filter=${encodeURIComponent(currentFilter)}&letter=${encodeURIComponent(letter)}&status=${encodeURIComponent(status)}&_t=${new Date().getTime()}`;
-    fetch(url).then(r=>r.json()).then(data => {
-        const tbody = document.getElementById('activeUsersBody');
-        tbody.innerHTML = '';
-        if (!data.rows || data.rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-gray-400">No users found</td></tr>';
-        } else {
-            let html = '';
-            data.rows.forEach(u => {
-                const rc = RC_MAP[u.role]||'gray';
-                const name = (u.last_name||'') + ', ' + (u.first_name||'') + (u.middle_name ? ' ' + u.middle_name : '');
-                const escName = (u.first_name||'') + ' ' + (u.last_name||'');
-                html += `<tr class="hover:bg-gray-50">
-                    <td class="px-4 py-3"><input type="checkbox" class="user-checkbox rounded" data-id="${u.id}" onchange="updateSelectedCount()"></td>
-                    <td class="px-4 py-3 font-medium break-words">${esc(name)}</td>
-                    <td class="px-4 py-3 text-gray-500 break-all">${esc(u.email||'—')}</td>
-                    <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs font-medium bg-${rc}-100 text-${rc}-700 capitalize">${u.role.replace(/_/g,' ')}</span></td>
-                    <td class="px-4 py-3 text-gray-500 break-all">${esc(u.student_id||'—')}</td>
-                    <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs ${u.is_active?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}">${u.is_active?'Active':'Inactive'}</span></td>
-                    <td class="px-4 py-3 text-gray-400 text-xs">${new Date(u.created_at).toLocaleDateString()}</td>
-                    <td class="px-4 py-3 text-right">
-                        <div class="flex justify-end gap-1">
-                            <button type="button" onclick='editUser(${JSON.stringify(u).replace(/'/g,"&#39;")})' class="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="Edit"><i class="fas fa-edit"></i></button>
-                            <button type="button" onclick="toggleStatus(${u.id})" class="p-1.5 text-yellow-600 hover:bg-yellow-50 rounded" title="Toggle"><i class="fas fa-power-off"></i></button>
-                            <button type="button" onclick="openResetPassword(${u.id},'${esc(escName).replace(/'/g,"\\'")}')" class="p-1.5 text-orange-600 hover:bg-orange-50 rounded" title="Reset Password"><i class="fas fa-key"></i></button>
-                            <button type="button" onclick="archiveUser(${u.id},'${esc(escName).replace(/'/g,"\\'")}')" class="p-1.5 text-red-600 hover:bg-red-50 rounded" title="Archive"><i class="fas fa-archive"></i></button>
-                        </div>
-                    </td>
-                </tr>`;
-            });
-            tbody.innerHTML = html;
-        }
-        renderPagination('active', data.total, data.per_page, data.page);
-        updateSelectedCount();
-        // Sync pagination selector
-        document.getElementById('activeItemsPerPage').value = data.per_page;
-    }).catch(err => {
-        console.error('Error fetching active users:', err);
-        document.getElementById('activeUsersBody').innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-red-400">Error loading users</td></tr>';
-    });
-}
+function fetchActiveUsers() { return fetchUserPage('active'); }
 
-function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function esc(value) {return String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));}
 
 function toggleSelectAll() {
     const selectAll = document.getElementById('selectAllUsers');
@@ -240,11 +172,11 @@ function bulkArchiveUsers() {
     const ids = Array.from(checkboxes).map(cb => cb.dataset.id);
     
     if (ids.length === 0) {
-        Swal.fire('No Selection', 'Please select at least one user to archive.', 'warning');
+        userAlert('No Selection', 'Please select at least one user to archive.', 'warning');
         return;
     }
     
-    Swal.fire({
+    userAlert({
         title: 'Archive Users?',
         html: `Are you sure you want to archive <strong>${ids.length}</strong> user(s)?`,
         icon: 'warning',
@@ -260,13 +192,13 @@ function bulkArchiveUsers() {
                 body: JSON.stringify({ ids: ids })
             }).then(response => response.json()).then(data => {
                 if (data.success) {
-                    Swal.fire('Archived!', `${ids.length} user(s) have been archived.`, 'success').then(() => location.reload());
+                    userAlert('Archived!', `${ids.length} user(s) have been archived.`, 'success').then(() => location.reload());
                 } else {
-                    Swal.fire('Error', data.error || 'Failed to archive users', 'error');
+                    userAlert('Error', data.error || 'Failed to archive users', 'error');
                 }
             }).catch(err => {
                 console.error('Error:', err);
-                Swal.fire('Error', 'Failed to archive users', 'error');
+                userAlert('Error', 'Failed to archive users', 'error');
             });
         }
     });
@@ -296,11 +228,11 @@ function bulkUnarchiveUsers() {
     const ids = Array.from(checkboxes).map(cb => cb.dataset.id);
     
     if (ids.length === 0) {
-        Swal.fire('No Selection', 'Please select at least one user to restore.', 'warning');
+        userAlert('No Selection', 'Please select at least one user to restore.', 'warning');
         return;
     }
     
-    Swal.fire({
+    userAlert({
         title: 'Restore Users?',
         html: `Are you sure you want to restore <strong>${ids.length}</strong> user(s)?`,
         icon: 'question',
@@ -316,143 +248,176 @@ function bulkUnarchiveUsers() {
                 body: JSON.stringify({ ids: ids })
             }).then(response => response.json()).then(data => {
                 if (data.success) {
-                    Swal.fire('Restored!', `${ids.length} user(s) have been restored.`, 'success').then(() => location.reload());
+                    userAlert('Restored!', `${ids.length} user(s) have been restored.`, 'success').then(() => location.reload());
                 } else {
-                    Swal.fire('Error', data.error || 'Failed to restore users', 'error');
+                    userAlert('Error', data.error || 'Failed to restore users', 'error');
                 }
             }).catch(err => {
                 console.error('Error:', err);
-                Swal.fire('Error', 'Failed to restore users', 'error');
+                userAlert('Error', 'Failed to restore users', 'error');
             });
         }
     });
 }
 
-function fetchArchivedUsers() {
-    const q = document.getElementById('searchInput').value;
-    const role = document.getElementById('roleFilter').value;
-    const status = document.getElementById('statusFilter').value;
-    const letter = document.getElementById('letterFilter').value;
-    const url = BASE + `&action=fetch_archived&p=${archivedPage}&per=${itemsPerPage}&q=${encodeURIComponent(q)}&role=${encodeURIComponent(role)}&letter=${encodeURIComponent(letter)}&status=${encodeURIComponent(status)}&_t=${new Date().getTime()}`;
-    fetch(url).then(r => {
-        if (!r.ok) throw new Error(`HTTP error! status: ${r.status}`);
-        return r.json();
-    }).then(data => {
-        const tbody = document.getElementById('archivedUsersBody');
-        if (!tbody) return;
-        tbody.innerHTML = '';
-        if (!data.rows || data.rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">No archived users</td></tr>';
-        } else {
-            let html = '';
-            data.rows.forEach(u => {
-                const name = (u.last_name||'') + ', ' + (u.first_name||'');
-                const escName = (u.first_name||'') + ' ' + (u.last_name||'');
-                html += `<tr class="hover:bg-gray-50 opacity-70">
-                    <td class="px-4 py-3"><input type="checkbox" class="archived-checkbox rounded" data-id="${u.id}" onchange="updateArchivedSelectedCount()"></td>
-                    <td class="px-4 py-3 break-words">${esc(name)}</td>
-                    <td class="px-4 py-3 text-gray-500 break-all">${esc(u.email||'—')}</td>
-                    <td class="px-4 py-3 capitalize text-gray-500">${u.role.replace(/_/g,' ')}</td>
-                    <td class="px-4 py-3 text-right"><button type="button" onclick="unarchiveUser(${u.id},'${esc(escName).replace(/'/g,"\\'")}')" class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200"><i class="fas fa-undo mr-1"></i>Restore</button></td>
-                </tr>`;
-            });
-            tbody.innerHTML = html;
-        }
-        renderPagination('archived', data.total, data.per_page, data.page);
-        updateArchivedSelectedCount();
-        // Sync pagination selector
-        document.getElementById('archivedItemsPerPage').value = data.per_page;
-    }).catch(err => {
-        console.error('Error fetching archived users:', err);
-        const tbody = document.getElementById('archivedUsersBody');
-        if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center text-red-400">Error loading archived users</td></tr>';
-        }
-    });
-}
+function fetchArchivedUsers() { return fetchUserPage('archived'); }
 
-function renderPagination(prefix, total, perPage, page) {
-    const totalPages = Math.max(1, Math.ceil(total / perPage));
-    const start = (page - 1) * perPage + 1;
-    const end = Math.min(page * perPage, total);
-    
-    const pageInfoEl = document.getElementById(prefix + 'PageInfo');
-    const prevBtnEl = document.getElementById(prefix + 'PrevBtn');
-    const nextBtnEl = document.getElementById(prefix + 'NextBtn');
-    const pageNumsEl = document.getElementById(prefix + 'PageNums');
-    
-    if (pageInfoEl) pageInfoEl.textContent = total === 0 ? 'No records' : `Showing ${start}-${end} of ${total}`;
-    if (prevBtnEl) prevBtnEl.disabled = page <= 1;
-    if (nextBtnEl) nextBtnEl.disabled = page >= totalPages;
-    
-    if (pageNumsEl) {
-        pageNumsEl.innerHTML = '';
-        const maxBtns = 5;
-        let sp = Math.max(1, page - Math.floor(maxBtns/2));
-        let ep = Math.min(totalPages, sp + maxBtns - 1);
-        if (ep - sp < maxBtns - 1) sp = Math.max(1, ep - maxBtns + 1);
-        
-        for (let p = sp; p <= ep; p++) {
-            const b = document.createElement('button');
-            b.textContent = p;
-            b.className = p === page ? 'px-2.5 py-1 text-sm rounded-lg bg-primary text-white' : 'px-2.5 py-1 text-sm rounded-lg border hover:bg-gray-50';
-            b.onclick = () => {
-                if (prefix === 'active') { activePage = p; fetchActiveUsers(); }
-                else { archivedPage = p; fetchArchivedUsers(); }
-            };
-            pageNumsEl.appendChild(b);
-        }
-    }
+function renderPagination(prefix,total,perPage,page) {
+    const totalPages=Math.max(1,Math.ceil(total/perPage));
+    document.getElementById(prefix+'PageInfo').textContent=total===0?'No accounts to display':'Showing '+((page-1)*perPage+1)+'–'+Math.min(page*perPage,total)+' of '+Number(total).toLocaleString()+' accounts';
+    document.getElementById(prefix+'PrevBtn').disabled=page<=1;document.getElementById(prefix+'NextBtn').disabled=page>=totalPages;
+    document.getElementById(prefix+'PageIndicator').textContent=page+' / '+totalPages;
+    const container=document.getElementById(prefix+'PageNums');container.replaceChildren();
+    const start=Math.max(1,Math.min(page-2,totalPages-4)),end=Math.min(totalPages,start+4);
+    for(let n=start;n<=end;n++){const button=document.createElement('button');button.type='button';button.textContent=n;button.className='um-page-button'+(n===page?' is-current':'');button.setAttribute('aria-label','Page '+n);if(n===page)button.setAttribute('aria-current','page');button.onclick=()=>{if(prefix==='active'){activePage=n;fetchActiveUsers();}else{archivedPage=n;fetchArchivedUsers();}};container.appendChild(button);}
 }
 
 function activeChangePage(delta) { activePage += delta; fetchActiveUsers(); }
 function archivedChangePage(delta) { archivedPage += delta; fetchArchivedUsers(); }
 
-function switchUserTab(tab) {
-    ['active', 'archived', 'imports'].forEach(t => {
-        const panel = document.getElementById('panel-' + t);
-        if (panel) {
-            if (t === tab) {
-                panel.classList.remove('hidden');
-            } else {
-                panel.classList.add('hidden');
-            }
-        }
-        const btn = document.getElementById('tab-' + t);
-        if (btn) {
-            if (t === tab) {
-                btn.classList.remove('text-gray-600');
-                btn.classList.add('bg-primary', 'text-white');
-            } else {
-                btn.classList.remove('bg-primary', 'text-white');
-                btn.classList.add('text-gray-600');
-            }
-        }
-    });
-    
-    if (tab === 'archived') { 
-        archivedPage = 1; 
-        fetchArchivedUsers(); 
-    } else if (tab === 'active') { 
-        activePage = 1; 
-        fetchActiveUsers(); 
-    } else if (tab === 'imports') {
-        // Imports tab - no fetch needed
-    }
-    
-    // Update URL to preserve filter when switching tabs
-    const url = new URL(window.location);
-    if (currentFilter) {
-        url.searchParams.set('filter', currentFilter);
-    } else {
-        url.searchParams.delete('filter');
-    }
-    window.history.replaceState({}, '', url);
+function switchUserTab(tab,resetPage=true) {
+    closeUserActions();
+    for(const name of ['active','archived','imports']){const selected=name===tab;document.getElementById('panel-'+name).classList.toggle('hidden',!selected);const button=document.getElementById('tab-'+name);button.className='um-tab'+(selected?' is-active':'');button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;}
+    document.getElementById('userFilters').classList.toggle('hidden',tab==='imports');
+    let loading=Promise.resolve();
+    if(tab==='archived'){if(resetPage)archivedPage=1;loading=fetchArchivedUsers();}else if(tab==='active'){if(resetPage)activePage=1;loading=fetchActiveUsers();}
+    const url=new URL(location.href);if(currentFilter)url.searchParams.set('filter',currentFilter);else url.searchParams.delete('filter');
+    if(tab==='active')url.searchParams.delete('tab');else url.searchParams.set('tab',tab);
+    history.replaceState({...history.state},'',url);
+    return loading;
 }
 
 // Init - wait for DOM to be ready
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', initializeUserManagement);
+
+function fetchUserPage(kind) {
+    const sequence=++userRowsRequest[kind], archived=kind==='archived';
+    const body=document.getElementById(archived?'archivedUsersBody':'activeUsersBody');
+    if(!body)return;
+    const query=new URLSearchParams({action:archived?'fetch_archived':'fetch_active',p:archived?archivedPage:activePage,per:itemsPerPage,q:document.getElementById('searchInput').value,role:document.getElementById('roleFilter').value,status:document.getElementById('statusFilter').value,letter:document.getElementById('letterFilter').value,_t:Date.now()});
+    if(!archived)query.set('filter',currentFilter);
+    body.setAttribute('aria-busy','true');
+    closeUserActions(); syncUserFilters();
+    return fetch(BASE+'&'+query).then(response=>{if(!response.ok)throw new Error('Request failed');return response.json();}).then(data=>{
+        if(sequence!==userRowsRequest[kind] || !body.isConnected)return;
+        if(!Array.isArray(data.rows))throw new Error('Invalid user response');
+        renderUserRows(body,data.rows,archived);
+        renderPagination(kind,data.total,data.per_page,data.page);
+        if(archived)archivedPage=data.page;else activePage=data.page;
+        document.getElementById(archived?'selectAllArchived':'selectAllUsers').checked=false;
+        document.getElementById(kind+'ItemsPerPage').value=data.per_page;
+        if(archived)updateArchivedSelectedCount();else updateSelectedCount();
+    }).catch(error=>{
+        if(sequence!==userRowsRequest[kind] || !body.isConnected || error.name==='AbortError')return;
+        body.innerHTML='<tr><td colspan="7" class="um-empty"><strong>Could not load accounts</strong><p>Please try your search again.</p></td></tr>';
+    }).finally(()=>{if(sequence===userRowsRequest[kind] && body.isConnected)body.removeAttribute('aria-busy');});
+}
+
+function renderUserRows(body,rows,archived) {
+    body.replaceChildren();
+    if(!rows.length){body.innerHTML='<tr><td colspan="7" class="um-empty"><span class="um-empty-icon"><i class="fas fa-users" aria-hidden="true"></i></span><strong>'+(archived?'No archived accounts found':'No matching accounts')+'</strong><p>Try a different search or reset your filters.</p></td></tr>';return;}
+    for(const user of rows){
+        const name=[user.first_name,user.middle_name,user.last_name].filter(Boolean).join(' ');
+        const initials=((user.first_name||'')[0]||'')+((user.last_name||'')[0]||'');
+        const role=userRoleNames[user.role]||'User';
+        const enabled=Number(user.is_active)===1;
+        const date=new Date(String(user.created_at).replace(' ','T'));
+        const dateLabel=isNaN(date)?'—':date.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+        const row=document.createElement('tr');
+        row.innerHTML='<td class="um-check-cell"></td><td class="um-account-cell"><div class="um-account"><span class="um-user-avatar" aria-hidden="true">'+esc(initials.toUpperCase())+'</span><span class="um-account-text"><strong>'+esc(name)+'</strong><small>'+esc(user.email||'No email address')+'</small></span></div></td><td data-label="Role"><span class="um-role-badge um-role-'+(Object.hasOwn(userRoleNames,user.role)?user.role:'user')+'">'+esc(role)+'</span></td><td data-label="Student ID"><span class="um-id">'+esc(user.student_id||'—')+'</span></td><td data-label="Status"><span class="um-status '+(archived?'is-archived':enabled?'':'is-inactive')+'">'+(archived?'Archived':enabled?'Active':'Inactive')+'</span></td><td data-label="Joined"><time class="um-date">'+esc(dateLabel)+'</time></td><td class="um-actions-cell"><div class="um-row-actions"></div></td>';
+        const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.className=archived?'archived-checkbox':'user-checkbox';checkbox.dataset.id=user.id;checkbox.setAttribute('aria-label','Select '+name);checkbox.onchange=archived?updateArchivedSelectedCount:updateSelectedCount;row.firstElementChild.appendChild(checkbox);
+        const actions=row.querySelector('.um-row-actions');
+        const primary=document.createElement('button');primary.type='button';primary.className=archived?'um-restore':'um-edit';primary.textContent=archived?'Restore':'Edit details';primary.setAttribute('aria-label',(archived?'Restore ':'Edit ')+name);primary.onclick=()=>archived?unarchiveUser(user.id,name):editUser(user);actions.appendChild(primary);
+        if(!archived){const more=document.createElement('button');more.type='button';more.className='um-more';more.innerHTML='<span>More</span><i class="fas fa-chevron-down" aria-hidden="true"></i>';more.setAttribute('aria-label','More actions for '+name);more.setAttribute('aria-haspopup','menu');more.setAttribute('aria-expanded','false');more.onclick=event=>openUserActions(event,user);actions.appendChild(more);}
+        body.appendChild(row);
+    }
+}
+
+function openUserActions(event,user) {
+    event.stopPropagation();
+    const trigger=event.currentTarget;
+    if(userActionPopover?.trigger===trigger){closeUserActions();return;}
+    closeUserActions();
+    const popup=document.createElement('div');popup.className='um-action-popover';popup.setAttribute('role','menu');popup.setAttribute('aria-label','Account actions');
+    const name=[user.first_name,user.last_name].filter(Boolean).join(' ');
+    const actions=[['fa-key','Reset password',()=>openResetPassword(user.id,name)],['fa-power-off',Number(user.is_active)===1?'Deactivate account':'Activate account',()=>toggleStatus(user.id)],['fa-box-archive','Archive account',()=>archiveUser(user.id,name)]];
+    for(const [icon,label,action]of actions){const button=document.createElement('button');button.type='button';button.setAttribute('role','menuitem');button.innerHTML='<i class="fas '+icon+'" aria-hidden="true"></i><span>'+label+'</span>';button.onclick=()=>{closeUserActions(true);action();};popup.appendChild(button);}
+    document.body.appendChild(popup);
+    const rect=trigger.getBoundingClientRect();
+    popup.style.left=Math.max(12,Math.min(innerWidth-popup.offsetWidth-12,rect.right-popup.offsetWidth))+'px';
+    popup.style.top=Math.max(12,Math.min(innerHeight-popup.offsetHeight-12,rect.bottom+5))+'px';
+    userActionPopover={popup,trigger};trigger.setAttribute('aria-expanded','true');popup.querySelector('button').focus();
+}
+
+function closeUserActions(restore=false) {
+    if(!userActionPopover)return;
+    const {popup,trigger}=userActionPopover;popup.remove();trigger.setAttribute('aria-expanded','false');userActionPopover=null;if(restore && trigger.isConnected)trigger.focus();
+}
+
+function syncUserFilters() {
+    const value=document.getElementById('roleFilter').value;
+    document.querySelectorAll('[data-um-role]').forEach(card=>{const selected=card.dataset.umRole===value;card.classList.toggle('is-selected',selected);card.setAttribute('aria-pressed',String(selected));});
+    document.getElementById('umMissingIdNotice').classList.toggle('hidden',currentFilter!=='missing_id');
+    const labels={'':'All accounts',student:'Students',examinee:'Examinees',guidance_advocate:'Guidance advocates',admin:'Admins / Counselors',super_admin:'Superadmins'};
+    const descriptions={'':'All roles',student:'Enrolled students',examinee:'Entrance exam applicants',guidance_advocate:'Staff who support counseling',admin:'Guidance office administrators',super_admin:'System and account administrators'};
+    document.querySelector('.um-workspace').dataset.role=value;
+    document.getElementById('umListTitle-active').textContent=value?(labels[value]+' — current accounts'):'All current accounts';
+    document.getElementById('umListHint-active').textContent=descriptions[value]+'. Active users can sign in; inactive users cannot.';
+    document.getElementById('umListTitle-archived').textContent=value?(labels[value]+' — archived accounts'):'All archived accounts';
+    document.getElementById('umListHint-archived').textContent='Archived accounts cannot sign in. Restore an account to make it available again.';
+
+}
+
+function chooseUserRole(role) {for(const id of ['searchInput','statusFilter','letterFilter'])document.getElementById(id).value='';document.getElementById('roleFilter').value=role;onRoleFilterChange();}
+
+function refreshUserFilters() {activePage=1;archivedPage=1;fetchActiveUsers();if(!document.getElementById('panel-archived').classList.contains('hidden'))fetchArchivedUsers();}
+
+function clearUserFilters() {currentFilter='';for(const id of ['searchInput','roleFilter','statusFilter','letterFilter'])document.getElementById(id).value='';refreshUserFilters();}
+
+function toggleUserFilters(button) {const fields=document.getElementById('umFilterFields');const open=fields.classList.toggle('is-open');button.setAttribute('aria-expanded',String(open));}
+
+function capturePortalPageState() {
+    return {kind:'users',activePage,archivedPage,itemsPerPage,currentFilter,
+        tab:['active','archived','imports'].find(tab=>!document.getElementById('panel-'+tab).classList.contains('hidden'))||'active',
+        fields:Object.fromEntries(['searchInput','roleFilter','statusFilter','letterFilter'].map(id=>[id,document.getElementById(id).value])),
+        filtersOpen:document.getElementById('umFilterFields').classList.contains('is-open')};
+}
+function restorePortalPageState(state) {
+    activePage=state.activePage;archivedPage=state.archivedPage;itemsPerPage=state.itemsPerPage;currentFilter=state.currentFilter;
+    for(const id of ['searchInput','roleFilter','statusFilter','letterFilter'])document.getElementById(id).value=state.fields[id]||'';
+    document.getElementById('umFilterFields').classList.toggle('is-open',state.filtersOpen);
+    document.querySelector('.um-filter-toggle')?.setAttribute('aria-expanded',String(state.filtersOpen));
+    syncUserFilters();return switchUserTab(state.tab,false);
+}
+
+function openUserDialog(id) {
+    closeUserActions();
+    const dialog=document.getElementById(id);if(!dialog)return;
+    userDialogFocus=document.activeElement;activeUserDialog=dialog;dialog.classList.remove('hidden');window.PortalDialogs?.open(dialog);
+    const first=dialog.querySelector('.pd-body input:not([type=hidden]):not([type=checkbox]),.pd-body select,.pd-body button');first?.focus({preventScroll:true});
+}
+
+function closeUserDialog(id) {
+    const dialog=document.getElementById(id);dialog?.classList.add('hidden');window.PortalDialogs?.close(dialog);activeUserDialog=null;
+    if(userDialogFocus?.isConnected)userDialogFocus.focus({preventScroll:true});userDialogFocus=null;
+}
+
+function initializeUserManagement() {
     toggleStudentFields();
-    // Force fresh data fetch on page load
-    fetchActiveUsers();
-});
+    document.querySelectorAll('.um-modal label:not([for])').forEach((label,index)=>{const control=label.parentElement.querySelector('input:not([type=hidden]),select');if(control && !label.contains(control)){control.id=control.id||'um-dialog-field-'+index;label.htmlFor=control.id;}});
+    document.querySelectorAll('.um-modal').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target===dialog)closeUserDialog(dialog.id);}));
+    document.addEventListener('click',event=>{if(userActionPopover && !userActionPopover.popup.contains(event.target))closeUserActions();});
+    window.addEventListener('resize',()=>closeUserActions());
+    window.addEventListener('scroll',()=>closeUserActions(),true);
+    document.addEventListener('keydown',event=>{
+        if(window.Swal?.isVisible())return;
+        if(event.key==='Escape'){if(userActionPopover){closeUserActions(true);event.preventDefault();}else if(activeUserDialog){closeUserDialog(activeUserDialog.id);event.preventDefault();}}
+        if(userActionPopover && ['ArrowDown','ArrowUp'].includes(event.key)){const items=[...userActionPopover.popup.querySelectorAll('button')];const index=items.indexOf(document.activeElement);items[(index+(event.key==='ArrowDown'?1:-1)+items.length)%items.length].focus();event.preventDefault();}
+        if(activeUserDialog && event.key==='Tab'){const items=[...activeUserDialog.querySelectorAll('button,input:not([type=hidden]),select,a[href]')].filter(el=>el.offsetParent!==null && !el.disabled);if(event.shiftKey && document.activeElement===items[0]){event.preventDefault();items.at(-1).focus();}else if(!event.shiftKey && document.activeElement===items.at(-1)){event.preventDefault();items[0].focus();}}
+    });
+    document.querySelectorAll('.um-tab').forEach(button=>button.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;const tabs=['active','archived','imports'];let index=tabs.indexOf(button.id.slice(4));index=event.key==='Home'?0:event.key==='End'?2:(index+(event.key==='ArrowRight'?1:-1)+3)%3;switchUserTab(tabs[index]);document.getElementById('tab-'+tabs[index]).focus();event.preventDefault();}));
+    const saved=window.PortalNavigation?.getRestoreState();
+    if(saved?.kind==='users')return restorePortalPageState(saved);
+    syncUserFilters();
+    const initial=new URLSearchParams(location.search).get('tab');if(['archived','imports'].includes(initial))return switchUserTab(initial);else return fetchActiveUsers();
+}

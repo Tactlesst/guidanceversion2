@@ -8,7 +8,7 @@ function sanitize($value) {
 
 function fetchSessionMessages() {
     $success = ''; $error = '';
-    $keys = ['success_message','error_message','assign_success','complete_success',
+    $keys = ['success_message','assign_success','complete_success',
               'cancel_success','missed_success','followup_success','form_success','settings_success'];
     foreach ($keys as $k) {
         if (isset($_SESSION[$k])) { $success = $_SESSION[$k]; unset($_SESSION[$k]); }

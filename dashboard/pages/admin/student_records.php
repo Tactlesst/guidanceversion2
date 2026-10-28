@@ -5,32 +5,27 @@ require_once __DIR__ . '/../../../classes/PersonalDataSheet.php';
 $user_obj = new User($db);
 $pds = new PersonalDataSheet($db);
 
-// Handle update student profile
-if (isset($_POST['update_student_profile'])) {
-    $user_id = $_POST['user_id'];
-    $department = $_POST['department'] ?? null;
-    $strand = $_POST['strand'] ?? null;
-    $program = $_POST['program'] ?? null;
-    $grade_level = $_POST['grade_level'] ?? null;
-    
-    // Check if student profile exists
-    $check_stmt = $db->prepare("SELECT id FROM student_profiles WHERE user_id = ?");
-    $check_stmt->execute([$user_id]);
-    $existing = $check_stmt->fetch(PDO::FETCH_ASSOC);
-    
-    if ($existing) {
-        // Update existing profile
-        $update_stmt = $db->prepare("UPDATE student_profiles SET department = ?, strand = ?, program = ?, grade_level = ? WHERE user_id = ?");
-        $update_stmt->execute([$department, $strand, $program, $grade_level, $user_id]);
-    } else {
-        // Create new profile
-        $insert_stmt = $db->prepare("INSERT INTO student_profiles (user_id, department, strand, program, grade_level) VALUES (?, ?, ?, ?, ?)");
-        $insert_stmt->execute([$user_id, $department, $strand, $program, $grade_level]);
-    }
-    
-    $_SESSION['success_message'] = "Student profile updated successfully!";
-    header("Location: layout.php?page=student_records");
-    exit();
+require_once __DIR__.'/../../../includes/student_record_support.php';
+$_SESSION['student_record_token']=$_SESSION['student_record_token']??bin2hex(random_bytes(32));
+if(isset($_POST['update_student_profile'])){
+    try{
+        if(!in_array($_SESSION['role']??'',['admin','guidance_advocate','super_admin'],true))throw new InvalidArgumentException('You do not have permission to assign academics.');
+        $token=$_POST['student_record_token']??'';
+        if(!is_string($token)||!hash_equals($_SESSION['student_record_token'],$token))throw new InvalidArgumentException('Your form has expired. Reload the student list and try again.');
+        saveStudentAcademicAssignment($db,$_POST);if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message']='Academic assignment saved.';
+    }catch(InvalidArgumentException $e){$_SESSION['error_message']=$e->getMessage();}
+    catch(Throwable $e){error_log('Student academic assignment: '.$e->getMessage());$_SESSION['error_message']='The academic assignment could not be saved. Please try again.';}
+    header('Location: '.portalSaveRedirect('layout.php?page=student_records'));exit;
+}
+if(($_GET['action']??'')==='get_record'){
+    ob_end_clean();header('Content-Type: application/json');header('Cache-Control: private, no-store');
+    if(!in_array($_SESSION['role']??'',['admin','guidance_advocate','super_admin'],true)){http_response_code(403);echo json_encode(['error'=>'Access denied.']);exit;}
+    $id=filter_var($_GET['id']??null,FILTER_VALIDATE_INT);
+    if(!$id||$id<1){http_response_code(400);echo json_encode(['error'=>'Choose a valid student.']);exit;}
+    $record=studentRecordSummary($db,$id,($_SESSION['role']??'')==='admin');
+    if(!$record){http_response_code(404);echo json_encode(['error'=>'Student record unavailable.']);exit;}
+    if(function_exists('staffActivityInteraction'))staffActivityInteraction('student_records','view_student_record');
+    echo json_encode(['record'=>$record],JSON_INVALID_UTF8_SUBSTITUTE);exit;
 }
 
 // AJAX endpoint for server-side pagination
@@ -38,13 +33,15 @@ if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
     ob_end_clean();
     header('Content-Type: application/json');
     $pg = max(1, intval($_GET['p'] ?? 1));
-    $per = 10;
+    $per = isset($_GET['per']) ? max(1, intval($_GET['per'])) : 10;
+    if ($per > 10000) $per = 10000;
     $off = ($pg - 1) * $per;
     $q = trim($_GET['q'] ?? '');
     $role = $_GET['role'] ?? 'all';
     $department = $_GET['department'] ?? '';
     $strand = $_GET['strand'] ?? '';
     $grade = $_GET['grade'] ?? '';
+    $pdsFilter = ($_GET['pds']??'')==='with'?'with':'all';
 
     $w = ["u.role = 'student'", "(u.archived=0 OR u.archived IS NULL)"];
     $p_arr = [];
@@ -55,6 +52,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
     if ($department) { $w[] = "sp.department = ?"; $p_arr[] = $department; }
     if ($strand) { $w[] = "(sp.strand = ? OR sp.program = ?)"; $p_arr[] = $strand; $p_arr[] = $strand; }
     if ($grade) { $w[] = "sp.grade_level = ?"; $p_arr[] = $grade; }
+    if($pdsFilter==='with')$w[]="EXISTS (SELECT 1 FROM pds saved_pds WHERE saved_pds.user_id=u.id)";
     $where = implode(' AND ', $w);
 
     // Count
@@ -62,23 +60,15 @@ if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
     $c_stmt->execute($p_arr);
     $total = $c_stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
+    $pg=min($pg,max(1,(int)ceil($total/$per)));$off=($pg-1)*$per;
+
     // Fetch page
-    $stmt = $db->prepare("SELECT u.*, sp.student_id, sp.department, sp.strand, sp.program, sp.grade_level FROM users u LEFT JOIN student_profiles sp ON u.id=sp.user_id WHERE $where ORDER BY sp.department, sp.strand, sp.program, sp.grade_level, u.last_name, u.first_name LIMIT $per OFFSET $off");
+    $stmt = $db->prepare("SELECT u.id,u.first_name,u.middle_name,u.last_name,u.email,u.is_active,u.created_at,sp.student_id,sp.department,sp.strand,sp.program,sp.grade_level FROM users u LEFT JOIN student_profiles sp ON u.id=sp.user_id WHERE $where ORDER BY sp.department, sp.strand, sp.program, sp.grade_level, u.last_name, u.first_name LIMIT $per OFFSET $off");
     $stmt->execute($p_arr);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Check PDS for each row
-    $pds_set = [];
-    foreach (['pds_college','pds_seniorhigh','pds_highschool'] as $tbl) {
-        try {
-            $ids = array_column($rows, 'id');
-            if (empty($ids)) continue;
-            $ph = implode(',', array_fill(0, count($ids), '?'));
-            $ps = $db->prepare("SELECT DISTINCT user_id FROM $tbl WHERE user_id IN ($ph)");
-            $ps->execute($ids);
-            while ($r = $ps->fetch(PDO::FETCH_ASSOC)) $pds_set[$r['user_id']] = true;
-        } catch (Exception $e) {}
-    }
+    $pds_set=[];$ids=array_column($rows,'id');
+    if($ids){$marks=implode(',',array_fill(0,count($ids),'?'));$ps=$db->prepare("SELECT DISTINCT user_id FROM pds WHERE user_id IN ($marks)");$ps->execute($ids);foreach($ps->fetchAll(PDO::FETCH_COLUMN) as $pds_user)$pds_set[$pds_user]=true;}
 
     foreach ($rows as &$row) {
         $row['has_pds'] = !empty($pds_set[$row['id']]);
@@ -89,10 +79,12 @@ if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
     exit();
 }
 
-$stats = [
-    'total_students' => $user_obj->getUsersByRole('student')->rowCount(),
-    'with_pds' => $pds->getAllPDS()->rowCount(),
-];
+$record_messages=fetchSessionMessages();
+$success_message=$record_messages['success'];$error_message=$record_messages['error'];
+// Cards and PDS badges use the same saved PDS records and student scope as the list.
+$summaryQuery=$db->query("SELECT COUNT(*) AS total_students,COALESCE(SUM(EXISTS (SELECT 1 FROM pds saved_pds WHERE saved_pds.user_id=u.id)),0) AS with_pds FROM users u WHERE u.role='student' AND COALESCE(u.archived,0)=0");
+$stats=$summaryQuery->fetch(PDO::FETCH_ASSOC);
+$selectedPdsFilter=($_GET['pds']??'')==='with'?'with':'all';
 
 // Fetch academic data for filters
 $departments = $db->query("SELECT * FROM academic_departments WHERE is_active = 1 ORDER BY sort_order, name")->fetchAll(PDO::FETCH_ASSOC);
@@ -124,28 +116,32 @@ foreach ($departments as $dept) {
     
     $department_data[$dept_name] = [
         'programs' => $dept_programs,
+        'strands' => array_values(array_column(array_filter($strands,static fn($strand)=>(int)$strand['department_id']===(int)$dept_id),'name')),
         'grades' => $dept_grades,
         'has_strands' => (stripos(strtolower($dept_name), 'senior') !== false) // Senior High has strands
     ];
 }
 ?>
 
+<link rel="stylesheet" href="../assets/css/student-record-actions.css?v=20261028-summary">
 <div class="space-y-6">
+<?php if($success_message||$error_message):?><script type="application/json" data-portal-feedback><?=json_encode(['success'=>$success_message,'error'=>$error_message],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE)?></script><?php endif;?>
     <div class="flex items-center justify-between">
         <h1 class="text-2xl font-bold text-gray-800"><i class="fas fa-users mr-2 text-primary"></i>Student Records</h1>
     </div>
 
-    <!-- Stats -->
-    <div class="grid grid-cols-2 gap-3">
-        <div class="bg-white rounded-xl shadow-sm p-4 text-center border-l-4 border-blue-500">
-            <div class="text-2xl font-bold text-gray-800"><?= $stats['total_students'] ?></div>
-            <div class="text-xs text-gray-500">Students</div>
-        </div>
-        <div class="bg-white rounded-xl shadow-sm p-4 text-center border-l-4 border-green-500">
-            <div class="text-2xl font-bold text-gray-800"><?= $stats['with_pds'] ?></div>
-            <div class="text-xs text-gray-500">With PDS</div>
-        </div>
+    <!-- Summary filters -->
+    <div class="grid grid-cols-2 gap-3" role="group" aria-label="Filter students by personal data sheet">
+        <button type="button" class="sr-summary-card bg-white rounded-xl shadow-sm p-4 text-center border-l-4 border-blue-500" data-pds-filter="all" aria-pressed="<?=$selectedPdsFilter==='all'?'true':'false'?>" onclick="setStudentPdsFilter('all')">
+            <span class="text-2xl font-bold text-gray-800"><?=(int)$stats['total_students']?></span>
+            <span class="text-xs text-gray-500">Students</span><small>Show all students</small>
+        </button>
+        <button type="button" class="sr-summary-card bg-white rounded-xl shadow-sm p-4 text-center border-l-4 border-green-500" data-pds-filter="with" aria-pressed="<?=$selectedPdsFilter==='with'?'true':'false'?>" onclick="setStudentPdsFilter('with')">
+            <span class="text-2xl font-bold text-gray-800"><?=(int)$stats['with_pds']?></span>
+            <span class="text-xs text-gray-500">With PDS</span><small>Show students with a saved PDS</small>
+        </button>
     </div>
+    <p id="studentPdsScope" class="sr-pds-scope" role="status" aria-live="polite">Showing: <?=$selectedPdsFilter==='with'?'Students with PDS':'All students'?></p>
 
     <!-- Search -->
     <div class="bg-white rounded-xl shadow-sm p-4">
@@ -157,21 +153,18 @@ foreach ($departments as $dept) {
                 <option value="<?= htmlspecialchars($dept['name']) ?>"><?= htmlspecialchars($dept['name']) ?></option>
                 <?php endforeach; ?>
             </select>
-            <select id="strandFilter" class="px-3 py-2 border rounded-lg text-sm" onchange="fetchStudents()">
+            <select id="strandFilter" class="px-3 py-2 border rounded-lg text-sm" onchange="currentPage=1;fetchStudents()">
                 <option value="">All Strands</option>
                 <?php foreach ($strands as $strand): ?>
                 <option value="<?= htmlspecialchars($strand['name']) ?>"><?= htmlspecialchars($strand['name']) ?></option>
                 <?php endforeach; ?>
             </select>
-            <select id="gradeFilter" class="px-3 py-2 border rounded-lg text-sm" onchange="fetchStudents()">
+            <select id="gradeFilter" class="px-3 py-2 border rounded-lg text-sm" onchange="currentPage=1;fetchStudents()">
                 <option value="">All Grade Levels</option>
                 <?php foreach ($grade_levels as $grade): ?>
                 <option value="<?= htmlspecialchars($grade['name']) ?>"><?= htmlspecialchars($grade['name']) ?></option>
                 <?php endforeach; ?>
             </select>
-            <button onclick="printStudentRecords()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark">
-                <i class="fas fa-print mr-1"></i>Print
-            </button>
         </div>
     </div>
 
@@ -179,7 +172,7 @@ foreach ($departments as $dept) {
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-sm table-fixed" id="studentsTable">
-                <colgroup><col class="w-[18%]"><col class="w-[10%]"><col class="w-[18%]"><col class="w-[12%]"><col class="w-[12%]"><col class="w-[10%]"><col class="w-[8%]"><col class="w-[8%]"><col class="w-[8%]"></colgroup>
+                <colgroup><col style="width:15%"><col style="width:10%"><col style="width:17%"><col style="width:11%"><col style="width:11%"><col style="width:9%"><col style="width:7%"><col style="width:7%"><col style="width:13%"></colgroup>
                 <thead class="bg-gray-50 text-gray-600 text-left"><tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Student ID</th><th class="px-4 py-3">Email</th><th class="px-4 py-3">Department</th><th class="px-4 py-3">Strand/Program</th><th class="px-4 py-3">Grade</th><th class="px-4 py-3">PDS</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Actions</th></tr></thead>
                 <tbody id="studentsBody" class="divide-y divide-gray-100"></tbody>
             </table>
@@ -196,55 +189,45 @@ foreach ($departments as $dept) {
     </div>
 </div>
 
-<!-- Edit Student Profile Modal -->
-<div id="editStudentProfileModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        <div class="bg-primary text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
-            <h3 class="text-lg font-bold"><i class="fas fa-edit mr-2"></i>Edit Student Profile</h3>
-            <button onclick="closeModal('editStudentProfileModal')" class="text-white/80 hover:text-white"><i class="fas fa-times"></i></button>
-        </div>
-        <form method="POST" class="p-6 space-y-4">
-            <input type="hidden" name="update_student_profile" value="1">
-            <input type="hidden" name="user_id" id="edit_user_id">
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Department</label>
-                <select name="department" id="edit_department" class="w-full px-3 py-2 border rounded-lg text-sm" onchange="updateEditFiltersByDepartment()">
-                    <option value="">Select Department</option>
-                    <?php foreach ($departments as $dept): ?>
-                    <option value="<?= htmlspecialchars($dept['name']) ?>"><?= htmlspecialchars($dept['name']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Strand</label>
-                <select name="strand" id="edit_strand" class="w-full px-3 py-2 border rounded-lg text-sm hidden">
-                    <option value="">Select Strand</option>
-                </select>
-            </div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Program</label>
-                <select name="program" id="edit_program" class="w-full px-3 py-2 border rounded-lg text-sm hidden">
-                    <option value="">Select Program</option>
-                </select>
-            </div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Grade Level</label>
-                <select name="grade_level" id="edit_grade_level" class="w-full px-3 py-2 border rounded-lg text-sm">
-                    <option value="">Select Department First</option>
-                </select>
-            </div>
-            <div class="flex justify-end gap-3 pt-2"><button type="button" onclick="closeModal('editStudentProfileModal')" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg text-sm">Update</button></div>
+<!-- Academic placement is separate from viewing a student's record. -->
+<div id="editStudentProfileModal" class="pd-overlay hidden sr-academic-modal" data-portal-dialog data-managed-dialog role="dialog" aria-modal="true" aria-labelledby="srAssignTitle">
+    <div class="pd-card"><header class="pd-header"><span class="pd-heading-icon" aria-hidden="true"><i class="fas fa-graduation-cap"></i></span><div class="pd-heading-copy"><p class="sr-eyebrow">ACADEMIC PLACEMENT</p><h2 id="srAssignTitle">Assign academics</h2><p>Set the department, grade/year, and strand or program.</p></div><button type="button" class="pd-close" aria-label="Close academic assignment" data-dialog-close="editStudentProfileModal">×</button></header>
+        <form data-portal-save method="POST" id="srAcademicForm"><input type="hidden" name="update_student_profile" value="1"><input type="hidden" name="student_record_token" value="<?=htmlspecialchars($_SESSION['student_record_token'],ENT_QUOTES,'UTF-8')?>"><input type="hidden" name="user_id" id="edit_user_id">
+            <div class="pd-body"><div class="sr-assignment-student"><strong id="srAssignStudentName"></strong><span id="srAssignStudentId"></span></div>
+                <div class="pd-field"><label for="edit_department">Department <span aria-hidden="true">*</span></label><select name="department" id="edit_department" required onchange="updateEditFiltersByDepartment()"><option value="">Select department</option><?php foreach($departments as $dept):?><option value="<?=htmlspecialchars($dept['name'],ENT_QUOTES,'UTF-8')?>"><?=htmlspecialchars($dept['name'])?></option><?php endforeach;?></select></div>
+                <div class="sr-academic-fields"><div class="pd-field"><label for="edit_grade_level">Grade / year level <span aria-hidden="true">*</span></label><select name="grade_level" id="edit_grade_level"><option value="">Select department first</option></select></div>
+                <div class="pd-field" id="srStrandField" hidden><label for="edit_strand">Strand <span aria-hidden="true">*</span></label><select name="strand" id="edit_strand"><option value="">Select strand</option></select></div>
+                <div class="pd-field" id="srProgramField" hidden><label for="edit_program">Program <span aria-hidden="true">*</span></label><select name="program" id="edit_program"><option value="">Select program</option></select></div></div>
+                <p class="sr-academic-hint" id="srAcademicHint">Choose a department to see its available academic options.</p><p class="sr-required">* Required fields</p>
+            </div><footer class="pd-footer"><button type="button" class="pd-button" data-dialog-close="editStudentProfileModal">Cancel</button><button type="submit" class="pd-button pd-button-primary"><i class="fas fa-check" aria-hidden="true"></i>Save assignment</button></footer>
         </form>
     </div>
 </div>
+<div id="studentRecordModal" class="pd-overlay hidden sr-record-modal" data-portal-dialog data-managed-dialog role="dialog" aria-modal="true" aria-labelledby="srRecordTitle"><div class="pd-card"><header class="pd-header"><span class="pd-heading-icon" aria-hidden="true"><i class="fas fa-address-card"></i></span><div class="pd-heading-copy"><p class="sr-eyebrow">STUDENT RECORD</p><h2 id="srRecordTitle">Student record</h2><p>Student information and current academic assignment.</p></div><button type="button" class="pd-close" aria-label="Close student record" data-dialog-close="studentRecordModal">×</button></header><div class="pd-body" id="srRecordContent" aria-live="polite"></div><footer class="pd-footer"><button type="button" class="pd-button" data-dialog-close="studentRecordModal">Close</button><button type="button" class="pd-button pd-button-primary" id="srRecordAssign" hidden>Assign academics</button></footer></div></div>
+<div id="studentPdsModal" class="pd-overlay hidden" data-portal-dialog data-managed-dialog role="dialog" aria-modal="true" aria-labelledby="srPdsTitle"><div class="pd-card pd-card-wide pds-paper-modal"><header class="pd-header"><div class="pd-heading-copy"><h2 id="srPdsTitle">Personal data sheet</h2><p>Student's saved paper form.</p></div><button type="button" class="pd-close" aria-label="Close student personal data sheet" onclick="closeStudentPds()">×</button></header><div class="pd-body pds-paper-modal-body"><div class="pds-document-toolbar"><label>Paper <select data-pds-paper-select aria-label="PDS paper size"><option value="long">Long bond (8.5 × 13 in)</option><option value="a4">A4</option><option value="letter">Letter</option></select></label><button type="button" data-pds-zoom="fit" aria-pressed="true">Fit width</button><button type="button" data-pds-zoom="actual" aria-pressed="false">Actual size</button></div><p class="pds-paper-status" data-pds-status role="status"></p><div class="pds-document-viewport" id="srPdsContent"></div></div></div></div>
+
 
 <script>
 const BASE = 'layout.php?page=student_records';
 let currentPage = 1;
 let searchTimer;
+let selectedStudentPdsFilter=<?=json_encode($selectedPdsFilter)?>;
+let studentFetchController=null,studentRequestId=0;
+function setStudentPdsFilter(value){
+    selectedStudentPdsFilter=value==='with'?'with':'all';currentPage=1;
+    for(const card of document.querySelectorAll('[data-pds-filter]'))card.setAttribute('aria-pressed',String(card.dataset.pdsFilter===selectedStudentPdsFilter));
+    document.getElementById('studentPdsScope').textContent=selectedStudentPdsFilter==='with'?'Showing: Students with PDS':'Showing: All students';
+    const url=new URL(location.href);if(selectedStudentPdsFilter==='with')url.searchParams.set('pds','with');else url.searchParams.delete('pds');
+    history.replaceState(history.state,'',url.pathname+url.search+url.hash);fetchStudents();
+}
+const studentRowsById=new Map();
 
 // Department data structure from PHP
-const departmentData = <?= json_encode($department_data) ?>;
+const departmentData = <?= json_encode($department_data,JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE) ?>;
 
 // Store all strands and grades for reference
-const allStrands = <?= json_encode(array_column($strands, 'name')) ?>;
-const allGrades = <?= json_encode(array_column($grade_levels, 'name')) ?>;
+const allStrands = <?= json_encode(array_column($strands, 'name'),JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE) ?>;
+const allGrades = <?= json_encode(array_column($grade_levels, 'name'),JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE) ?>;
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
@@ -293,6 +276,7 @@ function updateFiltersByDepartment() {
         }
     }
     
+    currentPage=1;
     // Reset selections and fetch
     strandFilter.value = '';
     gradeFilter.value = '';
@@ -309,36 +293,40 @@ function fetchStudents() {
     const department = document.getElementById('departmentFilter').value;
     const strand = document.getElementById('strandFilter').value;
     const grade = document.getElementById('gradeFilter').value;
-    fetch(BASE + `&action=fetch&p=${currentPage}&q=${encodeURIComponent(q)}&department=${encodeURIComponent(department)}&strand=${encodeURIComponent(strand)}&grade=${encodeURIComponent(grade)}`)
-    .then(r => r.json()).then(data => {
+    const requestId=++studentRequestId;studentFetchController?.abort();studentFetchController=new AbortController();
+    fetch(BASE + `&pds=${selectedStudentPdsFilter}&action=fetch&p=${currentPage}&q=${encodeURIComponent(q)}&department=${encodeURIComponent(department)}&strand=${encodeURIComponent(strand)}&grade=${encodeURIComponent(grade)}`,{signal:studentFetchController.signal})
+    .then(r => {if(!r.ok)throw new Error('Students could not be loaded.');return r.json();}).then(data => {
+        if(requestId!==studentRequestId)return;
         const tbody = document.getElementById('studentsBody');
+        studentRowsById.clear();for(const row of data.rows||[])studentRowsById.set(String(row.id),row);
         tbody.innerHTML = '';
         if (!data.rows || data.rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-gray-400">No students found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-gray-400">No students found</td></tr>';
         } else {
             data.rows.forEach(u => {
                 const name = (u.last_name||'') + ', ' + (u.first_name||'') + (u.middle_name ? ' ' + u.middle_name : '');
                 const pdsIcon = u.has_pds ? '<span class="text-green-600"><i class="fas fa-check-circle"></i></span>' : '<span class="text-gray-300"><i class="fas fa-minus-circle"></i></span>';
-                const statusClass = u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
+                const isStudentActive = Number(u.is_active) === 1;
+                const statusClass = isStudentActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
                 // Show strand for Senior High, program for Higher Education
-                const strandOrProgram = u.strand || u.program || '—';
+                const strandOrProgram = u.strand || u.program || 'N/A';
                 tbody.innerHTML += `<tr class="hover:bg-gray-50">
                     <td class="px-4 py-3 font-medium break-words">${esc(name)}</td>
-                    <td class="px-4 py-3 text-gray-500 break-all">${esc(u.student_id||'—')}</td>
-                    <td class="px-4 py-3 text-gray-500 break-all">${esc(u.email||'—')}</td>
-                    <td class="px-4 py-3 text-gray-500">${esc(u.department||'—')}</td>
+                    <td class="px-4 py-3 text-gray-500 break-all">${esc(u.student_id||'N/A')}</td>
+                    <td class="px-4 py-3 text-gray-500 break-all">${esc(u.email||'N/A')}</td>
+                    <td class="px-4 py-3 text-gray-500">${esc(u.department||'N/A')}</td>
                     <td class="px-4 py-3 text-gray-500">${esc(strandOrProgram)}</td>
-                    <td class="px-4 py-3 text-gray-500">${esc(u.grade_level||'—')}</td>
+                    <td class="px-4 py-3 text-gray-500">${esc(u.grade_level||'N/A')}</td>
                     <td class="px-4 py-3">${pdsIcon}</td>
-                    <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs ${statusClass}">${u.is_active?'Active':'Inactive'}</span></td>
+                    <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs ${statusClass}">${isStudentActive?'Active':'Inactive'}</span></td>
                     <td class="px-4 py-3">
-                        <button onclick="editStudentProfile(${u.id}, '${esc(u.department||'')}', '${esc(u.strand||'')}', '${esc(u.program||'')}', '${esc(u.grade_level||'')}')" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="Edit Profile"><i class="fas fa-edit"></i></button>
+                        <div class="sr-row-actions"><button type="button" data-view-student="${Number(u.id)}" title="View student record"><i class="fas fa-eye" aria-hidden="true"></i>View record</button><button type="button" data-assign-student="${Number(u.id)}" title="Assign department, grade/year and strand or program"><i class="fas fa-graduation-cap" aria-hidden="true"></i>Assign academics</button></div>
                     </td>
                 </tr>`;
             });
         }
-        renderPagination(data.total, data.per_page, data.page);
-    });
+        currentPage=data.page;renderPagination(data.total, data.per_page, data.page);
+    }).catch(error=>{if(error.name==='AbortError'||requestId!==studentRequestId)return;document.getElementById('studentsBody').innerHTML='<tr><td colspan="9" class="px-4 py-8 text-center">Students could not be loaded. Please try again.</td></tr>';});
 }
 
 function renderPagination(total, perPage, page) {
@@ -365,184 +353,8 @@ function renderPagination(total, perPage, page) {
 
 function changePage(delta) { currentPage += delta; fetchStudents(); }
 
-function updateEditFiltersByDepartment() {
-    const dept = document.getElementById('edit_department').value;
-    const strandFilter = document.getElementById('edit_strand');
-    const programFilter = document.getElementById('edit_program');
-    const gradeFilter = document.getElementById('edit_grade_level');
-    
-    // Reset filters
-    strandFilter.innerHTML = '<option value="">Select Strand</option>';
-    programFilter.innerHTML = '<option value="">Select Program</option>';
-    gradeFilter.innerHTML = '<option value="">Select Grade Level</option>';
-    
-    // Hide both strand and program initially
-    strandFilter.classList.add('hidden');
-    programFilter.classList.add('hidden');
-    
-    if (!dept) {
-        return;
-    }
-    
-    const deptInfo = departmentData[dept] || { programs: [], grades: [], has_strands: false };
-    
-    // Show strands only if department has strands (Senior High)
-    if (deptInfo.has_strands) {
-        strandFilter.classList.remove('hidden');
-        allStrands.forEach(s => {
-            strandFilter.innerHTML += `<option value="${s}">${s}</option>`;
-        });
-    } else if (deptInfo.programs.length > 0) {
-        // Show programs for Higher Education
-        programFilter.classList.remove('hidden');
-        deptInfo.programs.forEach(p => {
-            programFilter.innerHTML += `<option value="${p}">${p}</option>`;
-        });
-    }
-    
-    // Show grade levels only for this department
-    if (deptInfo.grades.length > 0) {
-        deptInfo.grades.forEach(g => {
-            gradeFilter.innerHTML += `<option value="${g}">${g}</option>`;
-        });
-    } else {
-        gradeFilter.innerHTML += '<option value="">N/A</option>';
-    }
-}
-
-function editStudentProfile(userId, department, strand, program, gradeLevel) {
-    document.getElementById('edit_user_id').value = userId;
-    document.getElementById('edit_department').value = department;
-    
-    // Update filters based on selected department
-    updateEditFiltersByDepartment();
-    
-    // Set strand and program after filters are updated
-    setTimeout(() => {
-        document.getElementById('edit_strand').value = strand || '';
-        document.getElementById('edit_program').value = program || '';
-        document.getElementById('edit_grade_level').value = gradeLevel;
-    }, 50);
-    
-    openModal('editStudentProfileModal');
-}
-
-async function printStudentRecords() {
-    const q = document.getElementById('searchInput').value;
-    const department = document.getElementById('departmentFilter').value;
-    const strand = document.getElementById('strandFilter').value;
-    const grade = document.getElementById('gradeFilter').value;
-    
-    // Fetch all students (no pagination for printing)
-    const url = BASE + `&action=fetch&p=1&per=10000&q=${encodeURIComponent(q)}&department=${encodeURIComponent(department)}&strand=${encodeURIComponent(strand)}&grade=${encodeURIComponent(grade)}`;
-    
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-        
-        if (!data.rows || data.rows.length === 0) {
-            Swal.fire('No Data', 'No students found for the selected filters.', 'warning');
-            return;
-        }
-        
-        // Group students by department, then strand, then grade
-        const grouped = {};
-        data.rows.forEach(student => {
-            const dept = student.department || 'No Department';
-            const str = student.strand || 'No Strand';
-            const grd = student.grade_level || 'No Grade';
-            
-            if (!grouped[dept]) grouped[dept] = {};
-            if (!grouped[dept][str]) grouped[dept][str] = {};
-            if (!grouped[dept][str][grd]) grouped[dept][str][grd] = [];
-            
-            grouped[dept][str][grd].push(student);
-        });
-        
-        // Generate print HTML
-        let printHTML = `
-            <html>
-            <head>
-                <title>Student Records</title>
-                <style>
-                    body { font-family: Arial, sans-serif; font-size: 12px; }
-                    h1 { text-align: center; margin-bottom: 20px; }
-                    h2 { margin-top: 20px; margin-bottom: 10px; border-bottom: 1px solid #000; padding-bottom: 5px; }
-                    h3 { margin-top: 15px; margin-bottom: 5px; }
-                    table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-                    th, td { border: 1px solid #000; padding: 8px; text-align: left; }
-                    th { background-color: #f0f0f0; font-weight: bold; }
-                    .group-header { background-color: #e0e0e0; font-weight: bold; }
-                    @media print { .no-print { display: none; } }
-                </style>
-            </head>
-            <body>
-                <h1>Student Records</h1>
-                <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
-                <p><strong>Filters:</strong> Role: ${role === 'all' ? 'All' : role} | Department: ${department || 'All'} | Strand: ${strand || 'All'} | Grade: ${grade || 'All'}</p>
-                <p><strong>Total Students:</strong> ${data.rows.length}</p>
-        `;
-        
-        for (const dept in grouped) {
-            printHTML += `<h2>${dept}</h2>`;
-            for (const str in grouped[dept]) {
-                printHTML += `<h3>${str}</h3>`;
-                for (const grd in grouped[dept][str]) {
-                    const students = grouped[dept][str][grd];
-                    printHTML += `<p><strong>Grade Level:</strong> ${grd} (${students.length} students)</p>`;
-                    printHTML += `<table>
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>Name</th>
-                                <th>Student ID</th>
-                                <th>Email</th>
-                                <th>Role</th>
-                                <th>PDS</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>`;
-                    
-                    students.forEach((student, index) => {
-                        const name = (student.last_name||'') + ', ' + (student.first_name||'') + (student.middle_name ? ' ' + student.middle_name : '');
-                        const pdsStatus = student.has_pds ? '✓' : '✗';
-                        const status = student.is_active ? 'Active' : 'Inactive';
-                        
-                        printHTML += `
-                            <tr>
-                                <td>${index + 1}</td>
-                                <td>${name}</td>
-                                <td>${student.student_id || '—'}</td>
-                                <td>${student.email || '—'}</td>
-                                <td>${student.role}</td>
-                                <td>${pdsStatus}</td>
-                                <td>${status}</td>
-                            </tr>`;
-                    });
-                    
-                    printHTML += `</tbody></table>`;
-                }
-            }
-        }
-        
-        printHTML += `
-            </body>
-            </html>
-        `;
-        
-        // Open print window
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(printHTML);
-        printWindow.document.close();
-        printWindow.print();
-        
-    } catch (error) {
-        console.error('Error generating print view:', error);
-        Swal.fire('Error', 'Failed to generate print view', 'error');
-    }
-}
-
 // Initial load
 fetchStudents();
 </script>
+
+<script src="../assets/js/student-record-actions.js?v=20261028-1"></script>

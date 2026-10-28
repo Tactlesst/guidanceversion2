@@ -1,0 +1,3 @@
+password,email,first_name,middle_name,last_name,student_id,role
+password123,john.doe@srcb.edu.ph,John,Michael,Doe,SRCB-2024-001,student
+password123,mary.smith@srcb.edu.ph,Mary,Jane,Smith,SRCB-2024-002,student

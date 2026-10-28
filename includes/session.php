@@ -6,10 +6,11 @@ if (session_status() == PHP_SESSION_NONE) {
         ini_set('session.cookie_secure', 1);
     }
     session_set_cookie_params([
-        'lifetime' => 0, 'path' => '/', 'domain' => $_SERVER['HTTP_HOST'] ?? '',
+        'lifetime' => 0, 'path' => '/guidanceversion2/', 'domain' => '',
         'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
         'httponly' => true, 'samesite' => 'Strict'
     ]);
+    session_name('GUIDANCEV2SESSID');
     session_start();
 
     // 30 min inactivity timeout
@@ -71,5 +72,7 @@ function getUserInfo() {
 
 function isLoggedIn() { return isset($_SESSION['user_id']); }
 
-function logout() { session_destroy(); header("Location: ../auth/login.php?logout=success"); exit(); }
+function logout() {
+    try {if(isset($_SESSION['user_id'])){require_once __DIR__.'/../config/database.php';require_once __DIR__.'/../classes/SystemLogger.php';$logoutDb=(new Database)->getConnection();$logoutActor=$logoutDb->prepare('SELECT role FROM users WHERE id=?');$logoutActor->execute([$_SESSION['user_id']]);$logoutRole=$logoutActor->fetchColumn();if(in_array($logoutRole,['admin','guidance_advocate','super_admin'],true))(new SystemLogger($logoutDb))->logout($_SESSION['user_id'],['actor_role'=>$logoutRole]);}}catch(Throwable $e){error_log('Staff sign-out audit could not be recorded.');}
+    session_destroy(); header("Location: ../auth/login.php?logout=success"); exit(); }
 ?>

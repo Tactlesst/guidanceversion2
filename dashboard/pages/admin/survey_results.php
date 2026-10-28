@@ -2,430 +2,80 @@
 require_once __DIR__ . '/../../../classes/PersonalDataSheet.php';
 
 $pds = new PersonalDataSheet($db);
+require_once __DIR__.'/../../../includes/assessment_result_queries.php';
 
 // AJAX endpoint for fetching survey results
-if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
-    error_reporting(0);
-    ob_end_clean();
-    header('Content-Type: application/json');
-    
+if (isset($_GET['action']) && $_GET['action']==='fetch') {
+    if(ob_get_level())ob_end_clean();header('Content-Type: application/json');
     try {
-        $pg = max(1, intval($_GET['p'] ?? 1));
-        $per = max(1, min(50, intval($_GET['per'] ?? 10)));
-        $off = ($pg - 1) * $per;
-        $q = trim($_GET['q'] ?? '');
-        $type = $_GET['type'] ?? 'all';
-        
-        $w = [];
-        $p_arr = [];
-        
-        if ($q) {
-            $like = "%$q%";
-            if ($type === 'all') {
-                // For UNION queries, need params twice
-                $p_arr = [$like, $like, $like, $like, $like, $like];
-            } else {
-                $p_arr = [$like, $like, $like];
-            }
-        }
-        
-        if ($type !== 'all') {
-            if ($type === 'multiple_intelligence') {
-                $w[] = "mis.id IS NOT NULL";
-            } elseif ($type === 'learning_style') {
-                $w[] = "lsi.id IS NOT NULL AND (lsi.level IS NULL OR lsi.level != 'intermediate')";
-            } elseif ($type === 'learning_style_intermediate') {
-                $w[] = "lsi.id IS NOT NULL AND lsi.level = 'intermediate'";
-            }
-        }
-        
-        $where = implode(' AND ', $w);
-        
-        // Combined query - MI has student_id, LS has user_id
-        if ($type === 'all') {
-            if ($q) {
-                $c_query = "SELECT COUNT(DISTINCT user_id) as total FROM (
-                            SELECT DISTINCT u.id as user_id FROM users u
-                            LEFT JOIN student_profiles sp ON u.id = sp.user_id
-                            LEFT JOIN multiple_intelligence_survey mis ON sp.student_id = mis.student_id
-                            WHERE mis.id IS NOT NULL AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)
-                            UNION
-                            SELECT DISTINCT u.id as user_id FROM users u
-                            LEFT JOIN learning_style_inventory lsi ON u.id = lsi.user_id
-                            WHERE lsi.id IS NOT NULL AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)
-                        ) combined";
-            } else {
-                $c_query = "SELECT COUNT(DISTINCT user_id) as total FROM (
-                            SELECT DISTINCT u.id as user_id FROM users u
-                            LEFT JOIN student_profiles sp ON u.id = sp.user_id
-                            LEFT JOIN multiple_intelligence_survey mis ON sp.student_id = mis.student_id
-                            WHERE mis.id IS NOT NULL
-                            UNION
-                            SELECT DISTINCT u.id as user_id FROM users u
-                            LEFT JOIN learning_style_inventory lsi ON u.id = lsi.user_id
-                            WHERE lsi.id IS NOT NULL
-                        ) combined";
-            }
-        } elseif ($type === 'multiple_intelligence') {
-            $c_query = "SELECT COUNT(DISTINCT u.id) as total FROM users u
-                    LEFT JOIN student_profiles sp ON u.id = sp.user_id
-                    LEFT JOIN multiple_intelligence_survey mis ON sp.student_id = mis.student_id
-                    WHERE mis.id IS NOT NULL";
-            if ($q) {
-                $c_query .= " AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)";
-            }
-        } elseif ($type === 'learning_style') {
-            $c_query = "SELECT COUNT(DISTINCT u.id) as total FROM users u
-                    LEFT JOIN learning_style_inventory lsi ON u.id = lsi.user_id
-                    WHERE lsi.id IS NOT NULL AND (lsi.level IS NULL OR lsi.level != 'intermediate')";
-            if ($q) {
-                $c_query .= " AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)";
-            }
-        } elseif ($type === 'learning_style_intermediate') {
-            $c_query = "SELECT COUNT(DISTINCT u.id) as total FROM users u
-                    LEFT JOIN learning_style_inventory lsi ON u.id = lsi.user_id
-                    WHERE lsi.id IS NOT NULL AND lsi.level = 'intermediate'";
-            if ($q) {
-                $c_query .= " AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)";
-            }
-        } else {
-            // learning_style
-            $c_query = "SELECT COUNT(DISTINCT u.id) as total FROM users u
-                    LEFT JOIN learning_style_inventory lsi ON u.id = lsi.user_id
-                    WHERE lsi.id IS NOT NULL";
-            if ($q) {
-                $c_query .= " AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)";
-            }
-        }
-        
-        $c_stmt = $db->prepare($c_query);
-        $c_stmt->execute($p_arr);
-        $total = $c_stmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
-        
-        // Fetch combined results - MI has student_id, LS has user_id
-        // For simplicity, we'll get results from each type separately based on filter
-        if ($type === 'multiple_intelligence') {
-            $f_query = "SELECT 
-                        u.id as user_id,
-                        u.first_name, u.last_name, u.email, 
-                        sp.student_id, sp.department, sp.grade_level,
-                        mis.id as mi_id, mis.completed_at as mi_date,
-                        NULL as ls_id, NULL as ls_date
-                        FROM users u 
-                        LEFT JOIN student_profiles sp ON u.id = sp.user_id 
-                        LEFT JOIN multiple_intelligence_survey mis ON sp.student_id = mis.student_id 
-                        WHERE mis.id IS NOT NULL";
-            
-            if ($q) {
-                $f_query .= " AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)";
-            }
-            
-            $f_query .= " ORDER BY mis.completed_at DESC LIMIT $per OFFSET $off";
-        } elseif ($type === 'learning_style') {
-            $f_query = "SELECT 
-                        u.id as user_id,
-                        u.first_name, u.last_name, u.email, 
-                        sp.student_id, sp.department, sp.grade_level,
-                        NULL as mi_id, NULL as mi_date,
-                        lsi.id as ls_id, lsi.created_at as ls_date,
-                        lsi.level as ls_level
-                        FROM users u 
-                        LEFT JOIN learning_style_inventory lsi ON u.id = lsi.user_id 
-                        LEFT JOIN student_profiles sp ON u.id = sp.user_id 
-                        WHERE lsi.id IS NOT NULL AND (lsi.level IS NULL OR lsi.level != 'intermediate')";
-            
-            if ($q) {
-                $f_query .= " AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)";
-            }
-            
-            $f_query .= " ORDER BY lsi.created_at DESC LIMIT $per OFFSET $off";
-        } elseif ($type === 'learning_style_intermediate') {
-            $f_query = "SELECT 
-                        u.id as user_id,
-                        u.first_name, u.last_name, u.email, 
-                        sp.student_id, sp.department, sp.grade_level,
-                        NULL as mi_id, NULL as mi_date,
-                        lsi.id as ls_id, lsi.created_at as ls_date,
-                        lsi.level as ls_level
-                        FROM users u 
-                        LEFT JOIN learning_style_inventory lsi ON u.id = lsi.user_id 
-                        LEFT JOIN student_profiles sp ON u.id = sp.user_id 
-                        WHERE lsi.id IS NOT NULL AND lsi.level = 'intermediate'";
-            
-            if ($q) {
-                $f_query .= " AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)";
-            }
-            
-            $f_query .= " ORDER BY lsi.created_at DESC LIMIT $per OFFSET $off";
-        } else {
-            // All assessments - need to get both types
-            // To keep it simple, we'll limit the search results properly
-            $search_where = '';
-            if ($q) {
-                $search_where = " AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)";
-            }
-            
-            $f_query = "SELECT * FROM (
-                        SELECT 
-                            u.id as user_id,
-                            u.first_name, u.last_name, u.email, 
-                            sp.student_id, sp.department, sp.grade_level,
-                            mis.id as mi_id, mis.completed_at as mi_date,
-                            NULL as ls_id, NULL as ls_date,
-                            mis.completed_at as sort_date
-                            FROM users u 
-                            LEFT JOIN student_profiles sp ON u.id = sp.user_id 
-                            LEFT JOIN multiple_intelligence_survey mis ON sp.student_id = mis.student_id 
-                            WHERE mis.id IS NOT NULL" . $search_where . "
-                        UNION ALL
-                        SELECT 
-                            u.id as user_id,
-                            u.first_name, u.last_name, u.email, 
-                            sp.student_id, sp.department, sp.grade_level,
-                            NULL as mi_id, NULL as mi_date,
-                            lsi.id as ls_id, lsi.created_at as ls_date,
-                            lsi.created_at as sort_date
-                            FROM users u 
-                            LEFT JOIN learning_style_inventory lsi ON u.id = lsi.user_id 
-                            LEFT JOIN student_profiles sp ON u.id = sp.user_id 
-                            WHERE lsi.id IS NOT NULL" . $search_where . "
-                    ) combined
-                    ORDER BY sort_date DESC LIMIT $per OFFSET $off";
-        }
-        $f_stmt = $db->prepare($f_query);
-        $f_stmt->execute($p_arr);
-        $rows = $f_stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        echo json_encode(['rows' => $rows, 'total' => (int)$total, 'per_page' => (int)$per, 'page' => (int)$pg]);
-    } catch (Exception $e) {
-        error_log('Survey Results Error: ' . $e->getMessage());
-        error_log('Query: ' . $f_query);
-        error_log('Params: ' . json_encode($p_arr));
-        echo json_encode(['error' => $e->getMessage(), 'rows' => [], 'total' => 0, 'per_page' => 10, 'page' => 1, 'debug' => ['query' => $f_query, 'params' => $p_arr]]);
+        $pg=max(1,(int)($_GET['p']??1));$per=max(1,min(50,(int)($_GET['per']??10)));
+        $type=(string)($_GET['type']??'all');$search=trim((string)($_GET['q']??''));
+        [$query,$params]=assessmentResultQuery($type,$search);
+        $count=$db->prepare("SELECT COUNT(*) FROM ($query) assessment_rows");$count->execute($params);$total=(int)$count->fetchColumn();
+        $pg=min($pg,max(1,(int)ceil($total/$per)));$off=($pg-1)*$per;
+        $statement=$db->prepare("SELECT * FROM ($query) assessment_rows ORDER BY sort_date DESC,user_id DESC,mi_id DESC,ls_id DESC LIMIT $per OFFSET $off");
+        $statement->execute($params);
+        echo json_encode(['rows'=>$statement->fetchAll(PDO::FETCH_ASSOC),'total'=>$total,'per_page'=>$per,'page'=>$pg],JSON_INVALID_UTF8_SUBSTITUTE);
+    }catch(Exception $e){
+        error_log('Survey results: '.$e->getMessage());
+        echo json_encode(['error'=>'Assessment results could not be loaded. Check your filters and try again.','rows'=>[],'total'=>0,'per_page'=>10,'page'=>1]);
     }
-    exit();
+    exit;
 }
 
-// AJAX endpoint for fetching detailed assessment data
-if (isset($_GET['action']) && $_GET['action'] === 'get_details') {
-    error_reporting(0);
-    ob_end_clean();
-    header('Content-Type: application/json');
-    
-    try {
-        $type = $_GET['type'] ?? '';
-        $id = intval($_GET['id'] ?? 0);
-        
-        if ($type === 'mi') {
-            // Fetch multiple intelligence survey details
-            $query = "SELECT mis.*, u.first_name, u.last_name, sp.student_id 
-                      FROM multiple_intelligence_survey mis
-                      JOIN student_profiles sp ON mis.student_id = sp.student_id
-                      JOIN users u ON sp.user_id = u.id
-                      WHERE mis.id = ?";
-            $stmt = $db->prepare($query);
-            $stmt->execute([$id]);
-            $result = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if ($result) {
-                $student = $result['first_name'] . ' ' . $result['last_name'];
-                $submitted = date('F j, Y at g:i A', strtotime($result['completed_at']));
-                
-                // Map sections to intelligence types based on survey_thankyou.php
-                $intelligence_types = [
-                    1 => ['name' => 'Naturalist Intelligence', 'score' => $result['section1_score']],
-                    2 => ['name' => 'Musical Intelligence', 'score' => $result['section2_score']],
-                    3 => ['name' => 'Logical-Mathematical Intelligence', 'score' => $result['section3_score']],
-                    4 => ['name' => 'Existential Intelligence', 'score' => $result['section4_score']],
-                    5 => ['name' => 'Interpersonal Intelligence', 'score' => $result['section5_score']],
-                    6 => ['name' => 'Bodily-Kinesthetic Intelligence', 'score' => $result['section6_score']],
-                    7 => ['name' => 'Linguistic Intelligence', 'score' => $result['section7_score']],
-                    8 => ['name' => 'Intrapersonal Intelligence', 'score' => $result['section8_score']],
-                    9 => ['name' => 'Spatial Intelligence', 'score' => $result['section9_score']],
-                ];
-                
-                // Calculate total score for percentage
-                $total_score = 0;
-                foreach ($intelligence_types as $type) {
-                    $total_score += $type['score'];
-                }
-                
-                // Calculate percentages and find dominant
-                $scores = [];
-                $max_score = 0;
-                foreach ($intelligence_types as $type) {
-                    $percentage = $total_score > 0 ? round(($type['score'] / $total_score) * 100) : 0;
-                    $scores[] = [
-                        'name' => $type['name'],
-                        'score' => $percentage,
-                        'dominant' => $type['score'] >= 2 // Dominant if score is 2 or more
-                    ];
-                    if ($type['score'] > $max_score) {
-                        $max_score = $type['score'];
-                    }
-                }
-                
-                echo json_encode([
-                    'success' => true,
-                    'student' => $student,
-                    'student_id' => $result['student_id'],
-                    'submitted' => $submitted,
-                    'scores' => $scores
-                ]);
-            } else {
-                echo json_encode(['error' => 'Assessment not found']);
-            }
-        } elseif ($type === 'ls') {
-            // Fetch learning style inventory details
-            $query = "SELECT lsi.*, u.first_name, u.last_name, sp.student_id 
-                      FROM learning_style_inventory lsi
-                      JOIN users u ON lsi.user_id = u.id
-                      LEFT JOIN student_profiles sp ON u.id = sp.user_id
-                      WHERE lsi.id = ?";
-            $stmt = $db->prepare($query);
-            $stmt->execute([$id]);
-            $result = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if ($result) {
-                $student = $result['first_name'] . ' ' . $result['last_name'];
-                $submitted = date('F j, Y at g:i A', strtotime($result['created_at']));
-                
-                // Calculate percentages based on scores
-                $total_score = $result['visual_score'] + $result['auditory_score'] + $result['kinesthetic_score'];
-                $visual_pct = $total_score > 0 ? round(($result['visual_score'] / $total_score) * 100) : 0;
-                $auditory_pct = $total_score > 0 ? round(($result['auditory_score'] / $total_score) * 100) : 0;
-                $kinesthetic_pct = $total_score > 0 ? round(($result['kinesthetic_score'] / $total_score) * 100) : 0;
-                
-                $scores = [
-                    ['name' => 'Visual', 'score' => $visual_pct, 'dominant' => $result['learning_style'] === 'Visual'],
-                    ['name' => 'Auditory', 'score' => $auditory_pct, 'dominant' => $result['learning_style'] === 'Auditory'],
-                    ['name' => 'Kinesthetic', 'score' => $kinesthetic_pct, 'dominant' => $result['learning_style'] === 'Kinesthetic'],
-                ];
-                
-                echo json_encode([
-                    'success' => true,
-                    'student' => $student,
-                    'student_id' => $result['student_id'] ?? 'N/A',
-                    'submitted' => $submitted,
-                    'level' => $result['level'] ?? null,
-                    'scores' => $scores
-                ]);
-            } else {
-                echo json_encode(['error' => 'Assessment not found']);
-            }
-        } else {
-            echo json_encode(['error' => 'Invalid assessment type']);
-        }
-    } catch (Exception $e) {
-        echo json_encode(['error' => $e->getMessage()]);
+require_once __DIR__.'/../../../includes/assessment_profile.php';
+if(in_array($_GET['action']??'',['get_details','print_profile'],true)){
+    if(ob_get_level())ob_end_clean();header('Cache-Control: private, no-store');
+    try{
+        $type=is_string($_GET['type']??null)?$_GET['type']:'';$id=filter_var($_GET['id']??null,FILTER_VALIDATE_INT);
+        if(!$id||$id<1)throw new InvalidArgumentException('Choose a valid assessment.');
+        $profile=AssessmentProfile::load($db,$type,(int)$id);
+        if(function_exists('staffActivityInteraction'))staffActivityInteraction('survey_results',$_GET['action']==='print_profile'?'print_assessment':'view_assessment');
+        if($_GET['action']==='print_profile'){
+            require_once __DIR__.'/../../../includes/learner_profile_paper.php';
+            require_once __DIR__.'/../../../includes/pds_paper.php';
+            header('Content-Type: text/html; charset=utf-8');header('X-Frame-Options: SAMEORIGIN');
+            echo LearnerProfilePaper::render($profile,AssessmentProfile::learner($db,$profile,($_SESSION['role']??'')==='admin'),PDSPaperDocument::baseUrl());
+        }else{header('Content-Type: application/json');echo json_encode($profile,JSON_INVALID_UTF8_SUBSTITUTE);}
+    }catch(Throwable $e){
+        error_log('Assessment profile: '.$e->getMessage());
+        if(($_GET['action']??'')==='print_profile'){http_response_code(404);header('Content-Type: text/html; charset=utf-8');echo '<p>This assessment could not be loaded. Close the print preview and try again.</p>';}
+        else{header('Content-Type: application/json');echo json_encode(['error'=>'Assessment not found or unavailable.']);}
     }
-    exit();
+    exit;
 }
 
-// Get statistics
-$stats = [
-    'multiple_intelligence' => 0,
-    'learning_style' => 0,
-    'total' => 0,
-    'completion_rate' => 0
-];
-
+// Counts describe the same assessment records returned by each filter.
+$stats=['total'=>0,'multiple_intelligence'=>0,'learning_style'=>0,'learning_style_intermediate'=>0];
 try {
-    $total_students = $db->query("SELECT COUNT(*) FROM users WHERE role = 'student' AND (archived = 0 OR archived IS NULL)")->fetchColumn();
-    $stats['multiple_intelligence'] = $db->query("SELECT COUNT(*) FROM multiple_intelligence_survey")->fetchColumn();
-    $stats['learning_style'] = $db->query("SELECT COUNT(*) FROM learning_style_inventory")->fetchColumn();
-    $stats['total'] = $stats['multiple_intelligence'] + $stats['learning_style'];
-    
-    if ($total_students > 0) {
-        $stats['completion_rate'] = round(($stats['total'] / ($total_students * 2)) * 100);
-    }
-} catch (Exception $e) {}
-
-// Get assessment overview counts
-$assessment_overview = [
-    'multiple_intelligence_survey' => 0,
-    'learning_style_inventory' => 0,
-    'learning_style_intermediate' => 0
-];
-
-try {
-    $assessment_overview['multiple_intelligence_survey'] = $db->query("SELECT COUNT(*) FROM multiple_intelligence_survey")->fetchColumn();
-    $assessment_overview['learning_style_inventory'] = $db->query("SELECT COUNT(*) FROM learning_style_inventory")->fetchColumn();
-    $assessment_overview['learning_style_intermediate'] = $db->query("SELECT COUNT(*) FROM learning_style_inventory WHERE level = 'intermediate'")->fetchColumn();
-} catch (Exception $e) {}
+    [$summaryQuery]=assessmentResultQuery();
+    foreach($db->query("SELECT assessment_type,COUNT(*) AS total FROM ($summaryQuery) assessment_rows GROUP BY assessment_type")->fetchAll(PDO::FETCH_ASSOC) as $row){$stats[$row['assessment_type']]=(int)$row['total'];$stats['total']+=(int)$row['total'];}
+}catch(Exception $e){error_log('Survey summary: '.$e->getMessage());}
 ?>
 
+<link rel="stylesheet" href="../assets/css/assessment-profile-viewer.css?v=20261028-1">
 <div class="space-y-6">
     <div>
         <h1 class="text-2xl font-bold text-gray-800">Student Assessment Results</h1>
         <p class="text-sm text-gray-500">View and analyze student survey responses and learning assessments</p>
     </div>
 
-    <!-- Statistics Cards -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="bg-white rounded-xl shadow-sm p-4 text-center border-l-4 border-blue-500">
-            <div class="text-2xl font-bold text-gray-800"><?= $stats['multiple_intelligence'] ?></div>
-            <div class="text-xs text-gray-500">Multiple Intelligence</div>
-            <div class="text-[10px] text-gray-400">Completed surveys</div>
-        </div>
-        <div class="bg-white rounded-xl shadow-sm p-4 text-center border-l-4 border-green-500">
-            <div class="text-2xl font-bold text-gray-800"><?= $stats['learning_style'] ?></div>
-            <div class="text-xs text-gray-500">Learning Style</div>
-            <div class="text-[10px] text-gray-400">Completed inventories</div>
-        </div>
-        <div class="bg-white rounded-xl shadow-sm p-4 text-center border-l-4 border-purple-500">
-            <div class="text-2xl font-bold text-gray-800"><?= $stats['total'] ?></div>
-            <div class="text-xs text-gray-500">Total Assessments</div>
-            <div class="text-[10px] text-gray-400">All completed</div>
-        </div>
-        <div class="bg-white rounded-xl shadow-sm p-4 text-center border-l-4 border-orange-500">
-            <div class="text-2xl font-bold text-gray-800"><?= $stats['completion_rate'] ?>%</div>
-            <div class="text-xs text-gray-500">Completion Rate</div>
-            <div class="text-[10px] text-gray-400">Student participation</div>
-        </div>
-    </div>
-
-    <!-- Assessment Results Overview -->
-    <div class="bg-white rounded-xl shadow-sm p-4">
-        <div class="flex gap-2 mb-4">
-            <button onclick="switchTab('all')" id="tab-all" class="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-white">All Assessments</button>
-            <button onclick="switchTab('multiple_intelligence')" id="tab-multiple_intelligence" class="px-4 py-2 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200">Multiple Intelligence</button>
-            <button onclick="switchTab('learning_style')" id="tab-learning_style" class="px-4 py-2 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200">Learning Style</button>
-            <button onclick="switchTab('learning_style_intermediate')" id="tab-learning_style_intermediate" class="px-4 py-2 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200">Learning Style (Intermediate)</button>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                <div class="text-2xl font-bold text-blue-800"><?= $assessment_overview['multiple_intelligence_survey'] ?></div>
-                <div class="text-xs text-blue-600">Multiple Intelligence Survey</div>
-            </div>
-            <div class="bg-green-50 rounded-lg p-4 border border-green-200">
-                <div class="text-2xl font-bold text-green-800"><?= $assessment_overview['learning_style_inventory'] ?></div>
-                <div class="text-xs text-green-600">Learning Style Inventory</div>
-            </div>
-            <div class="bg-purple-50 rounded-lg p-4 border border-purple-200">
-                <div class="text-2xl font-bold text-purple-800"><?= $assessment_overview['learning_style_intermediate'] ?></div>
-                <div class="text-xs text-purple-600">Learning Style (Intermediate)</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Search & Filter Options -->
-    <div class="bg-white rounded-xl shadow-sm p-4">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="md:col-span-2">
-                <input type="text" id="searchInput" placeholder="Search by name or student ID..." class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none" onkeyup="debounceSearch()">
-            </div>
-            <div>
-                <select id="perPageFilter" class="w-full px-3 py-2 border rounded-lg text-sm" onchange="onPerPageChange()">
-                    <option value="10">10 per page</option>
-                    <option value="20">20 per page</option>
-                    <option value="30">30 per page</option>
-                    <option value="50">50 per page</option>
-                </select>
-            </div>
-        </div>
-    </div>
-
+<div class="record-summary-grid" role="group" aria-label="Filter results by assessment type"><button type="button" class="record-summary-card" data-survey-type="all" data-summary-count="<?= (int)$stats['total'] ?>" aria-pressed="true" aria-controls="surveyBody" onclick="selectSurveyType('all')" style="--record-accent:#32699b"><span class="record-summary-number"><?= (int)$stats['total'] ?></span><span class="record-summary-label">Total Assessments</span><span class="record-summary-hint">All completed assessments</span></button>
+<button type="button" class="record-summary-card" data-survey-type="multiple_intelligence" data-summary-count="<?= (int)$stats['multiple_intelligence'] ?>" aria-pressed="false" aria-controls="surveyBody" onclick="selectSurveyType('multiple_intelligence')" style="--record-accent:#3176a5"><span class="record-summary-number"><?= (int)$stats['multiple_intelligence'] ?></span><span class="record-summary-label">Multiple Intelligence</span><span class="record-summary-hint">Completed surveys</span></button>
+<button type="button" class="record-summary-card" data-survey-type="learning_style" data-summary-count="<?= (int)$stats['learning_style'] ?>" aria-pressed="false" aria-controls="surveyBody" onclick="selectSurveyType('learning_style')" style="--record-accent:#21866f"><span class="record-summary-number"><?= (int)$stats['learning_style'] ?></span><span class="record-summary-label">Learning Style</span><span class="record-summary-hint">Standard inventories</span></button>
+<button type="button" class="record-summary-card" data-survey-type="learning_style_intermediate" data-summary-count="<?= (int)$stats['learning_style_intermediate'] ?>" aria-pressed="false" aria-controls="surveyBody" onclick="selectSurveyType('learning_style_intermediate')" style="--record-accent:#8055a5"><span class="record-summary-number"><?= (int)$stats['learning_style_intermediate'] ?></span><span class="record-summary-label">Learning Style (Intermediate)</span><span class="record-summary-hint">Intermediate inventories</span></button></div>
+<div class="record-filter-selection"><p id="surveyFilterSelection" role="status">Showing: All assessments</p><button type="button" id="resetSurveyFilters" onclick="resetSurveyFilters()" hidden>Clear all filters</button></div>
+<details class="record-filter-options" id="surveyFilterOptions"><summary><span>Filters<span id="surveyFilterCount"></span></span><small>Search, assessment type and page size</small></summary><div class="record-filter-body"><div class="record-filter-tabs" id="assessmentTabs" role="group" aria-label="Assessment type">
+            <button type="button" onclick="selectSurveyType('all')" id="tab-all" class="px-4 py-2 text-xs font-medium rounded-lg bg-primary text-white cursor-pointer hover:bg-primary/90">All</button>
+            <button type="button" onclick="selectSurveyType('multiple_intelligence')" id="tab-multiple_intelligence" class="px-4 py-2 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer">Multiple Intelligence</button>
+            <button type="button" onclick="selectSurveyType('learning_style')" id="tab-learning_style" class="px-4 py-2 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer">Learning Style</button>
+            <button type="button" onclick="selectSurveyType('learning_style_intermediate')" id="tab-learning_style_intermediate" class="px-4 py-2 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer">Learning Style (Intermediate)</button>
+        </div><div class="record-filter-fields"><label class="record-filter-search">Search students<input type="search" id="searchInput" placeholder="Search by name, student ID or email" oninput="debounceSearch()"></label><label>Rows per page<select id="perPageFilter" class="w-full px-3 py-1.5 border rounded-lg text-xs" onchange="onPerPageChange()">
+                    <option value="10">10/page</option>
+                    <option value="20">20/page</option>
+                    <option value="30">30/page</option>
+                    <option value="50">50/page</option>
+                </select></label></div></div></details>
     <!-- Assessment Results Table -->
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
         <div class="px-4 py-3 border-b">
@@ -460,28 +110,9 @@ try {
     </div>
 </div>
 
-<!-- Assessment Details Modal -->
-<div id="assessmentModal" class="fixed inset-0 bg-black bg-opacity-50 z-[9999] hidden items-center justify-center p-4" style="display: none;">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto relative z-[10000]" onclick="event.stopPropagation()">
-        <div class="bg-primary text-white px-6 py-4 rounded-t-2xl flex justify-between items-center sticky top-0 z-50">
-            <h3 class="text-lg font-bold" id="modalTitle"><i class="fas fa-chart-bar mr-2"></i>Assessment Details</h3>
-            <button type="button" onclick="closeAssessmentModal()" class="flex items-center justify-center w-10 h-10 text-white hover:text-white hover:bg-white/20 rounded-lg transition-all duration-200 cursor-pointer hover:scale-110" title="Close modal">
-                <i class="fas fa-times text-xl"></i>
-            </button>
-        </div>
-        <div class="p-6" id="modalContent">
-            <!-- Content will be loaded here -->
-        </div>
-        <div class="px-6 py-4 border-t flex justify-end gap-2 sticky bottom-0 bg-white">
-            <button onclick="printAssessment()" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 flex items-center gap-2">
-                <i class="fas fa-print"></i> Print Report
-            </button>
-            <button onclick="closeAssessmentModal()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
-                Close
-            </button>
-        </div>
-    </div>
-</div>
+<!-- Consistent profile viewer for standard, intermediate, and MI assessments. -->
+<div id="assessmentModal" class="pd-overlay hidden assessment-profile-modal" data-portal-dialog data-managed-dialog data-assessment-type="ls" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="pd-card"><header class="pd-header"><span class="pd-heading-icon" aria-hidden="true"><i id="assessmentProfileIcon" class="fas fa-graduation-cap"></i></span><div class="pd-heading-copy"><p class="ap-eyebrow">ASSESSMENT RESULTS</p><h2 id="modalTitle">Learning style profile</h2><p>Results from the completed assessment.</p></div><button type="button" class="pd-close" aria-label="Close assessment profile" onclick="closeAssessmentModal()">×</button></header><div class="pd-body" id="modalContent" aria-live="polite"></div><footer class="pd-footer ap-footer"><span id="assessmentPrintStatus" role="status"></span><div><button type="button" class="pd-button" onclick="closeAssessmentModal()">Close</button><button type="button" class="pd-button pd-button-primary" id="assessmentPrintButton" onclick="printAssessment()" disabled><i class="fas fa-print" aria-hidden="true"></i>Print learner’s profile</button></div></footer></div></div>
+
 
 <script>
 const BASE = 'layout.php?page=survey_results';
@@ -492,21 +123,23 @@ let currentTab = 'all';
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-function switchTab(tab) {
-    currentTab = tab;
-    
-    // Update tab styles
-    document.querySelectorAll('[id^="tab-"]').forEach(btn => {
-        btn.classList.remove('bg-primary', 'text-white');
-        btn.classList.add('bg-gray-100', 'text-gray-700');
-    });
-    document.getElementById('tab-' + tab).classList.remove('bg-gray-100', 'text-gray-700');
-    document.getElementById('tab-' + tab).classList.add('bg-primary', 'text-white');
-    
-    // Refresh data
-    currentPage = 1;
-    fetchSurveyResults();
+const surveyTypeLabels={all:'All assessments',multiple_intelligence:'Multiple Intelligence',learning_style:'Learning Style',learning_style_intermediate:'Learning Style (Intermediate)'};
+let surveyRequestId=0;
+function syncSurveyFilters(){
+    for(const card of document.querySelectorAll('[data-survey-type]'))card.setAttribute('aria-pressed',String(card.dataset.surveyType===currentTab));
+    for(const tab of document.querySelectorAll('#assessmentTabs button')){const selected=tab.id==='tab-'+currentTab;tab.classList.toggle('bg-primary',selected);tab.classList.toggle('text-white',selected);tab.classList.toggle('bg-gray-100',!selected);tab.classList.toggle('text-gray-700',!selected);tab.setAttribute('aria-pressed',String(selected));}
+    const details=[surveyTypeLabels[currentTab]];let count=0;const q=document.getElementById('searchInput').value.trim();
+    if(q){details.push('Search: '+q);count++;}if(itemsPerPage!==10){details.push(itemsPerPage+' per page');count++;}
+    document.getElementById('surveyFilterSelection').textContent='Showing: '+details.join(' · ');
+    document.getElementById('surveyFilterCount').textContent=count?' ('+count+')':'';
+    document.getElementById('resetSurveyFilters').hidden=currentTab==='all'&&!count;
 }
+function selectSurveyType(tab){
+    if(!Object.hasOwn(surveyTypeLabels,tab))return;
+    clearTimeout(searchTimer);currentTab=tab;currentPage=1;fetchSurveyResults();
+}
+function resetSurveyFilters(){document.getElementById('searchInput').value='';document.getElementById('perPageFilter').value='10';itemsPerPage=10;selectSurveyType('all');}
+
 
 function debounceSearch() {
     clearTimeout(searchTimer);
@@ -520,10 +153,14 @@ function onPerPageChange() {
 }
 
 function fetchSurveyResults() {
+    syncSurveyFilters();
+    const requestId=++surveyRequestId;
     const q = document.getElementById('searchInput').value;
     
     fetch(BASE + `&action=fetch&p=${currentPage}&per=${itemsPerPage}&q=${encodeURIComponent(q)}&type=${encodeURIComponent(currentTab)}`)
-    .then(r => r.json()).then(data => {
+    .then(r => {if(!r.ok)throw new Error('Request failed');return r.json();}).then(data => {
+        if(requestId!==surveyRequestId)return;
+        if(data.error)throw new Error(data.error);
         const tbody = document.getElementById('surveyBody');
         tbody.innerHTML = '';
         
@@ -559,14 +196,14 @@ function fetchSurveyResults() {
                 tbody.innerHTML += `
                     <tr class="hover:bg-gray-50">
                         <td class="px-4 py-3 font-medium">${esc(name)}</td>
-                        <td class="px-4 py-3 text-gray-500">${esc(result.student_id||'—')}</td>
-                        <td class="px-4 py-3 text-gray-500">${esc(result.department||'—')}</td>
-                        <td class="px-4 py-3 text-gray-500">${esc(result.grade_level||'—')}</td>
+                        <td class="px-4 py-3 text-gray-500">${esc(result.student_id||'N/A')}</td>
+                        <td class="px-4 py-3 text-gray-500">${esc(result.department||'N/A')}</td>
+                        <td class="px-4 py-3 text-gray-500">${esc(result.grade_level||'N/A')}</td>
                         <td class="px-4 py-3">${assessments.length > 0 ? assessments.join(' ') : '<span class="text-gray-400">No assessments</span>'}</td>
-                        <td class="px-4 py-3 text-gray-400 text-xs">${latestDate ? latestDate.toLocaleDateString() : '—'}</td>
+                        <td class="px-4 py-3 text-gray-400 text-xs">${latestDate ? latestDate.toLocaleDateString() : 'N/A'}</td>
                         <td class="px-4 py-3 text-right">
                             ${result.mi_id ? `<button onclick="viewResult('mi', ${result.mi_id})" class="px-2 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 mr-1">MI</button>` : ''}
-                            ${result.ls_id ? `<button onclick="viewResult('ls', ${result.ls_id})" class="px-2 py-1 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200">LS</button>` : ''}
+                            ${result.ls_id ? `<button onclick="viewResult('${result.ls_level==='intermediate'?'ls_intermediate':'ls'}', ${result.ls_id})" class="px-2 py-1 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200">LS</button>` : ''}
                         </td>
                     </tr>
                 `;
@@ -574,123 +211,11 @@ function fetchSurveyResults() {
         }
         
         renderPagination(data.total, data.per_page, data.page);
+    }).catch(error=>{
+        if(requestId!==surveyRequestId||error.name==='AbortError')return;
+        renderPagination(0,itemsPerPage,1);
+        document.getElementById('surveyBody').innerHTML='<tr><td colspan="7" class="px-4 py-8 text-center text-red-400">Unable to load assessments. Please try again.</td></tr>';
     });
-}
-
-function viewResult(type, id) {
-    // Fetch detailed assessment data and show in modal
-    fetch(BASE + `&action=get_details&type=${type}&id=${id}`)
-    .then(r => r.json())
-    .then(data => {
-        if (data.error) {
-            alert('Error: ' + data.error);
-            return;
-        }
-        
-        const modal = document.getElementById('assessmentModal');
-        const content = document.getElementById('modalContent');
-        const title = document.getElementById('modalTitle');
-        
-        if (type === 'mi') {
-            title.innerHTML = `<i class="fas fa-brain mr-2"></i>${data.student} - Intelligence Profile`;
-            content.innerHTML = `
-                <div class="mb-4">
-                    <p class="text-sm text-gray-500">Student ID: ${esc(data.student_id)}</p>
-                    <p class="text-sm text-gray-500">Submitted: ${data.submitted}</p>
-                </div>
-                
-                <h4 class="text-sm font-semibold text-gray-800 mb-3 border-b pb-2">Intelligence Scores:</h4>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    ${data.scores.map(score => `
-                        <div class="flex justify-between items-center p-3 rounded-lg ${score.dominant ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}">
-                            <span class="text-sm font-medium ${score.dominant ? 'text-blue-800' : 'text-gray-700'}">${score.name}</span>
-                            <span class="text-sm font-bold ${score.dominant ? 'text-blue-800' : 'text-gray-600'}">${score.score}% ${score.dominant ? '<span class="text-xs ml-1">Dominant</span>' : ''}</span>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        } else if (type === 'ls') {
-            const levelClass = data.level === 'intermediate' ? 'text-purple-800' : 'text-green-800';
-            const levelText = data.level === 'intermediate' ? 'Learning Style (Intermediate) Profile' : 'Learning Style Profile';
-            title.innerHTML = `<i class="fas fa-graduation-cap mr-2"></i>${data.student} - ${levelText}`;
-            content.innerHTML = `
-                <div class="mb-4">
-                    <p class="text-sm text-gray-500">Student ID: ${esc(data.student_id)}</p>
-                    <p class="text-sm text-gray-500">Submitted: ${data.submitted}</p>
-                    ${data.level ? `<p class="text-sm text-gray-500">Level: ${esc(data.level)}</p>` : ''}
-                </div>
-                
-                <h4 class="text-sm font-semibold text-gray-800 mb-3 border-b pb-2">Learning Style Results:</h4>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    ${data.scores.map(score => `
-                        <div class="flex justify-between items-center p-3 rounded-lg ${score.dominant ? 'bg-green-50 border border-green-200' : 'bg-gray-50'}">
-                            <span class="text-sm font-medium ${score.dominant ? 'text-green-800' : 'text-gray-700'}">${score.name}</span>
-                            <span class="text-sm font-bold ${score.dominant ? 'text-green-800' : 'text-gray-600'}">${score.score}% ${score.dominant ? '<span class="text-xs ml-1">Dominant</span>' : ''}</span>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        }
-        
-        modal.classList.remove('hidden');
-        modal.style.display = 'flex';
-    })
-    .catch(error => {
-        console.error('Error fetching assessment details:', error);
-        alert('Error loading assessment details');
-    });
-}
-
-function closeAssessmentModal() {
-    const modal = document.getElementById('assessmentModal');
-    modal.classList.add('hidden');
-    modal.style.display = 'none';
-}
-
-function printAssessment() {
-    const content = document.getElementById('modalContent').innerHTML;
-    const title = document.getElementById('modalTitle').textContent;
-    
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>${title}</title>
-            <style>
-                body { font-family: Arial, sans-serif; padding: 20px; }
-                .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-                .p-3 { padding: 10px; }
-                .rounded-lg { border-radius: 8px; }
-                .bg-blue-50 { background: #eff6ff; }
-                .bg-green-50 { background: #f0fdf4; }
-                .bg-gray-50 { background: #f9fafb; }
-                .border { border: 1px solid #e5e7eb; }
-                .border-blue-200 { border-color: #bfdbfe; }
-                .border-green-200 { border-color: #bbf7d0; }
-                .text-sm { font-size: 14px; }
-                .text-xs { font-size: 12px; }
-                .font-medium { font-weight: 500; }
-                .font-bold { font-weight: 700; }
-                .text-blue-800 { color: #1e40af; }
-                .text-green-800 { color: #166534; }
-                .text-gray-700 { color: #374151; }
-                .text-gray-600 { color: #4b5563; }
-                .text-gray-500 { color: #6b7280; }
-                .flex { display: flex; }
-                .justify-between { justify-content: space-between; }
-                .items-center { align-items: center; }
-                @media print { body { padding: 0; } }
-            </style>
-        </head>
-        <body>
-            <h2>${title}</h2>
-            ${content}
-        </body>
-        </html>
-    `);
-    printWindow.document.close();
-    printWindow.print();
 }
 
 function renderPagination(total, perPage, page) {
@@ -721,3 +246,5 @@ function changePage(delta) { currentPage += delta; fetchSurveyResults(); }
 // Initial load
 fetchSurveyResults();
 </script>
+
+<script src="../assets/js/assessment-profile-viewer.js?v=20261028-1"></script>

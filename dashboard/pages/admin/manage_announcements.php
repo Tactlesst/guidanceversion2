@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../../../classes/AnnouncementPublication.php';
+$publication=new AnnouncementPublication($db);
 $msgs = fetchSessionMessages();
 $success_message = $msgs['success'];
 $error_message = $msgs['error'];
@@ -11,36 +13,32 @@ if ($_POST) {
             $message = trim($_POST['message'] ?? '');
             $event_type = $_POST['event_type'] ?? 'general';
             $target = $_POST['target_audience'] ?? 'all_students';
-            $event_date = $_POST['event_date'] ?: null;
-            $event_time = $_POST['event_time'] ?: null;
+            $event_date = ($_POST['event_date'] ?? '') ?: null;
+            $event_time = ($_POST['event_time'] ?? '') ?: null;
             $location = trim($_POST['location'] ?? '');
 
             if ($title === '' || $message === '') throw new Exception("Title and message are required.");
+            if (mb_strlen($title)>255 || mb_strlen($location)>255) throw new Exception("Title and location must each be 255 characters or fewer.");
+            if (!in_array($event_type,['general','academic','guidance'],true) || !in_array($target,['all_students','all_examinees','all_users'],true)) throw new Exception("Choose a valid category and audience.");
 
-            $stmt = $db->prepare("INSERT INTO announcements (title, message, event_type, target_audience, event_date, event_time, location, is_active, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, NOW())");
-            $stmt->execute([$title, $message, $event_type, $target, $event_date, $event_time, $location, $_SESSION['user_id']]);
-            $announcement_id = (int)$db->lastInsertId();
-
-            $userQuery = "SELECT id FROM users WHERE role IN ('student','examinee') AND (archived = 0 OR archived IS NULL)";
-            if ($target === 'all_students') $userQuery .= " AND role = 'student'";
-            if ($target === 'all_examinees') $userQuery .= " AND role = 'examinee'";
-            $users = $db->query($userQuery)->fetchAll(PDO::FETCH_ASSOC);
-
-            $notif_stmt = $db->prepare("INSERT INTO notifications (user_id, title, message, type, related_table, related_id, created_at) VALUES (?, ?, ?, 'info', 'announcements', ?, NOW())");
-            foreach ($users as $u) {
-                $notif_stmt->execute([$u['id'], $title, $message, $announcement_id]);
-            }
-            $_SESSION['success_message'] = "Announcement created and sent to " . count($users) . " users.";
-            header("Location: layout.php?page=manage_announcements");
+            $result=$publication->save(['title'=>$title,'message'=>$message,'event_type'=>$event_type,'target_audience'=>$target,'event_date'=>$event_date,'event_time'=>$event_time,'location'=>$location,'created_by'=>$_SESSION['user_id'],'show_on_homepage'=>isset($_POST['show_on_homepage']),'is_pinned'=>isset($_POST['is_pinned']),'expires_on'=>$_POST['expires_on']??null,'template_theme'=>$_POST['template_theme']??'blue-gold']);
+            if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message'] = "Announcement created and sent to " . $result['notification_count'] . " users.";
+            header("Location: " . portalSaveRedirect("layout.php?page=manage_announcements"));
             exit();
+        }
+
+        if ($action === 'update_visibility') {
+            $publication->visibility((int)($_POST['announcement_id']??0),isset($_POST['show_on_homepage']),isset($_POST['is_pinned']),AnnouncementPublication::expiry($_POST['expires_on']??null),$_POST['template_theme']??null);
+            if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message']='Announcement visibility updated. No notifications were sent again.';
+            header('Location: '.portalSaveRedirect('layout.php?page=manage_announcements'));exit;
         }
 
         if ($action === 'delete_announcement') {
             $id = (int)($_POST['announcement_id'] ?? 0);
             $db->prepare("DELETE FROM notifications WHERE related_table='announcements' AND related_id=?")->execute([$id]);
             $db->prepare("DELETE FROM announcements WHERE id=?")->execute([$id]);
-            $_SESSION['success_message'] = "Announcement deleted.";
-            header("Location: layout.php?page=manage_announcements");
+            if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message'] = "Announcement deleted.";
+            header("Location: " . portalSaveRedirect("layout.php?page=manage_announcements"));
             exit();
         }
     } catch (Exception $e) {
@@ -48,87 +46,51 @@ if ($_POST) {
     }
 }
 
-$page_no = max(1, (int)($_GET['p'] ?? 1));
-$per_page = max(10, min(100, (int)($_GET['per_page'] ?? 10)));
-$offset = ($page_no - 1) * $per_page;
-
-$total_records = (int)$db->query("SELECT COUNT(*) FROM announcements")->fetchColumn();
-$total_pages = max(1, (int)ceil($total_records / $per_page));
-
-$stmt = $db->prepare("SELECT a.*, u.first_name, u.last_name, (SELECT COUNT(*) FROM notifications n WHERE n.related_table='announcements' AND n.related_id=a.id) AS notification_count FROM announcements a LEFT JOIN users u ON a.created_by = u.id ORDER BY a.created_at DESC LIMIT :limit OFFSET :offset");
-$stmt->bindValue(':limit', $per_page, PDO::PARAM_INT);
-$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-$stmt->execute();
-$announcements = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-$audience_count = (int)$db->query("SELECT COUNT(*) FROM users WHERE role IN ('student','examinee') AND (archived=0 OR archived IS NULL)")->fetchColumn();
+$anTypes=['general'=>'General','academic'=>'Academic','guidance'=>'Guidance','intake_interview'=>'Intake interview','exit_interview'=>'Exit interview'];
+$anAudiences=['all_students'=>'Students','all_examinees'=>'Examinees','all_users'=>'Students & examinees','new_students'=>'New students','graduating_students'=>'Graduating students','specific_grade'=>'Specific grade'];
+$anEscape=static fn($v)=>htmlspecialchars((string)($v??''),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
+$anGet=static fn($key)=>is_string($_GET[$key]??null)?trim($_GET[$key]):'';
+$anSearch=mb_substr($anGet('search'),0,150);$anType=$anGet('type');$anAudience=$anGet('audience');
+if(!isset($anTypes[$anType]))$anType='';if(!isset($anAudiences[$anAudience]))$anAudience='';
+$where=[];$params=[];
+if($anType!==''){$where[]='a.event_type=:type';$params[':type']=$anType;}
+if($anAudience!==''){$where[]='a.target_audience=:audience';$params[':audience']=$anAudience;}
+if($anSearch!==''){$where[]="(a.title LIKE :search_title ESCAPE '!' OR a.message LIKE :search_message ESCAPE '!' OR a.location LIKE :search_location ESCAPE '!')";$needle='%'.str_replace(['!','%','_'],['!!','!%','!_'],$anSearch).'%';foreach([':search_title',':search_message',':search_location'] as $key)$params[$key]=$needle;}
+$whereSql=$where?' WHERE '.implode(' AND ',$where):'';
+$counts=array_fill_keys(array_keys($anTypes),0);$total_records=0;
+foreach($db->query('SELECT event_type,COUNT(*) AS total FROM announcements GROUP BY event_type')->fetchAll(PDO::FETCH_ASSOC) as $countRow){$total_records+=(int)$countRow['total'];$counts[$countRow['event_type']??'general']=(int)$countRow['total'];}
+$countQuery=$db->prepare('SELECT COUNT(*) FROM announcements a'.$whereSql);$countQuery->execute($params);$matching_records=(int)$countQuery->fetchColumn();
+$per_page=10;$total_pages=max(1,(int)ceil($matching_records/$per_page));$page_no=min($total_pages,max(1,(int)($_GET['p']??1)));$offset=($page_no-1)*$per_page;
+$stmt=$db->prepare("SELECT a.*,u.first_name,u.last_name,(SELECT COUNT(*) FROM notifications n WHERE n.related_table='announcements' AND n.related_id=a.id) AS notification_count FROM announcements a LEFT JOIN users u ON a.created_by=u.id".$whereSql.' ORDER BY a.created_at DESC,a.id DESC LIMIT :limit OFFSET :offset');
+foreach($params as $key=>$value)$stmt->bindValue($key,$value,PDO::PARAM_STR);$stmt->bindValue(':limit',$per_page,PDO::PARAM_INT);$stmt->bindValue(':offset',$offset,PDO::PARAM_INT);$stmt->execute();$announcements=$stmt->fetchAll(PDO::FETCH_ASSOC);
+$anRecipients=['all_students'=>0,'all_examinees'=>0,'all_users'=>0];foreach($db->query("SELECT role,COUNT(*) AS total FROM users WHERE role IN ('student','examinee') AND (archived=0 OR archived IS NULL) GROUP BY role")->fetchAll(PDO::FETCH_ASSOC) as $countRow){$anRecipients[$countRow['role']==='student'?'all_students':'all_examinees']=(int)$countRow['total'];$anRecipients['all_users']+=(int)$countRow['total'];}
+$anURL=static function($changes=[])use($anSearch,$anType,$anAudience){return 'layout.php?'.http_build_query(array_filter(array_merge(['page'=>'manage_announcements','search'=>$anSearch,'type'=>$anType,'audience'=>$anAudience],$changes),static fn($v)=>$v!==''&&$v!==null));};
+$anFilterCount=(int)($anSearch!=='')+(int)($anAudience!=='')+(int)($anType!=='');
+$anForm=static fn($key,$default='')=>is_string($_POST[$key]??null)?$_POST[$key]:$default;
+$anData=[];foreach($announcements as $a)$anData[]=['id'=>(int)$a['id'],'title'=>$a['title'],'message'=>$a['message'],'type'=>$anTypes[$a['event_type']]??ucwords(str_replace('_',' ',$a['event_type']??'general')),'audience'=>$anAudiences[$a['target_audience']]??ucwords(str_replace('_',' ',$a['target_audience']??'all_students')),'date'=>$a['event_date'],'time'=>$a['event_time'],'location'=>$a['location']==='__HOMEPAGE__'?null:$a['location'],'homepage'=>(bool)$a['show_on_homepage'],'pinned'=>(bool)$a['is_pinned'],'theme'=>$a['template_theme'],'expires'=>$a['expires_on'],'expired'=>!empty($a['expires_on'])&&$a['expires_on']<date('Y-m-d'),'author'=>trim(($a['first_name']??'').' '.($a['last_name']??''))?:'System','published'=>$a['created_at'],'sent'=>(int)$a['notification_count']];
 ?>
-
-<div class="space-y-6">
-    <div class="flex items-center justify-between flex-wrap gap-3">
-        <h1 class="text-2xl font-bold text-gray-800"><i class="fas fa-bullhorn mr-2 text-primary"></i>Announcements</h1>
-        <button onclick="openModal('announcementModal')" class="px-3 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark"><i class="fas fa-plus mr-1"></i>Create</button>
-    </div>
-
-    <?= renderAlerts($success_message, $error_message) ?>
-
-    <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <div class="bg-white rounded-xl shadow-sm p-4 border-l-4 border-blue-500"><div class="text-xs text-gray-500">Total Announcements</div><div class="text-2xl font-bold text-gray-800"><?= $total_records ?></div></div>
-        <div class="bg-white rounded-xl shadow-sm p-4 border-l-4 border-green-500"><div class="text-xs text-gray-500">Target Reach</div><div class="text-2xl font-bold text-gray-800"><?= $audience_count ?></div></div>
-        <div class="bg-white rounded-xl shadow-sm p-4 border-l-4 border-purple-500"><div class="text-xs text-gray-500">This Page</div><div class="text-2xl font-bold text-gray-800"><?= count($announcements) ?></div></div>
-    </div>
-
-    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead class="bg-gray-50 text-left text-gray-600"><tr><th class="px-4 py-3">Title</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Audience</th><th class="px-4 py-3">Date</th><th class="px-4 py-3">Sent</th><th class="px-4 py-3">By</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
-                <tbody class="divide-y divide-gray-100">
-                    <?php if (empty($announcements)): ?>
-                    <tr><td colspan="7" class="px-4 py-8 text-center text-gray-400">No announcements yet.</td></tr>
-                    <?php else: foreach ($announcements as $a): ?>
-                    <tr class="hover:bg-gray-50">
-                        <td class="px-4 py-3"><div class="font-medium text-gray-800"><?= htmlspecialchars($a['title']) ?></div><div class="text-xs text-gray-500"><?= htmlspecialchars(substr($a['message'], 0, 70)) ?><?= strlen($a['message']) > 70 ? '...' : '' ?></div></td>
-                        <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-700"><?= htmlspecialchars(ucfirst(str_replace('_', ' ', $a['event_type'] ?? 'general'))) ?></span></td>
-                        <td class="px-4 py-3"><?= htmlspecialchars(str_replace('_', ' ', $a['target_audience'] ?? 'all_students')) ?></td>
-                        <td class="px-4 py-3 text-xs text-gray-600"><?= !empty($a['event_date']) ? date('M d, Y', strtotime($a['event_date'])) : 'N/A' ?></td>
-                        <td class="px-4 py-3"><?= (int)$a['notification_count'] ?></td>
-                        <td class="px-4 py-3 text-xs text-gray-600"><?= htmlspecialchars(trim(($a['first_name'] ?? '') . ' ' . ($a['last_name'] ?? '')) ?: 'System') ?></td>
-                        <td class="px-4 py-3 text-right">
-                            <form method="POST" class="inline">
-                                <input type="hidden" name="action" value="delete_announcement">
-                                <input type="hidden" name="announcement_id" value="<?= (int)$a['id'] ?>">
-                                <button class="px-3 py-1.5 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200" onclick="return confirm('Delete this announcement?')"><i class="fas fa-trash mr-1"></i>Delete</button>
-                            </form>
-                        </td>
-                    </tr>
-                    <?php endforeach; endif; ?>
-                </tbody>
-            </table>
-        </div>
-        <div class="p-4 border-t text-xs text-gray-500">Page <?= $page_no ?> of <?= $total_pages ?></div>
-    </div>
-</div>
-
-<div id="announcementModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl">
-        <div class="bg-primary text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
-            <h3 class="text-lg font-bold"><i class="fas fa-bullhorn mr-2"></i>Create Announcement</h3>
-            <button onclick="closeModal('announcementModal')" class="text-white/80 hover:text-white"><i class="fas fa-times"></i></button>
-        </div>
-        <form method="POST" class="p-6 space-y-4">
-            <input type="hidden" name="action" value="create_announcement">
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Title *</label><input type="text" name="title" required class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Message *</label><textarea name="message" rows="4" required class="w-full px-3 py-2 border rounded-lg text-sm"></textarea></div>
-            <div class="grid grid-cols-2 gap-4">
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Type</label><select name="event_type" class="w-full px-3 py-2 border rounded-lg text-sm"><option value="general">General</option><option value="academic">Academic</option><option value="guidance">Guidance</option></select></div>
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Audience</label><select name="target_audience" class="w-full px-3 py-2 border rounded-lg text-sm"><option value="all_students">Students</option><option value="all_examinees">Examinees</option><option value="all_users">All Users</option></select></div>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Event Date</label><input type="date" name="event_date" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Event Time</label><input type="time" name="event_time" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-            </div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Location</label><input type="text" name="location" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
-            <div class="flex justify-end gap-3 pt-2"><button type="button" onclick="closeModal('announcementModal')" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg text-sm">Create</button></div>
-        </form>
-    </div>
-</div>
+<link rel="stylesheet" href="../assets/css/announcement-poster.css?v=20261028-2">
+<link rel="stylesheet" href="../assets/css/announcements-workspace.css?v=20261028-4">
+<section class="an-workspace" aria-labelledby="anTitle">
+<header class="an-heading"><div><p class="an-eyebrow">GUIDANCE UPDATES</p><h1 id="anTitle">Announcements</h1><p>Publish updates and keep students and examinees informed.</p></div><button type="button" class="an-primary" id="anCreate"><i class="fas fa-plus" aria-hidden="true"></i>Create announcement</button></header>
+<?php if($success_message||$error_message):?><script type="application/json" data-portal-feedback><?=json_encode(['success'=>$success_message,'error'=>$error_message],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE)?></script><?php endif;?>
+<nav class="an-summary" aria-label="Filter announcements by category">
+<?php foreach([''=>'All announcements','general'=>'General','academic'=>'Academic','guidance'=>'Guidance'] as $key=>$label):$icons=[''=>'fa-bullhorn','general'=>'fa-comment-alt','academic'=>'fa-graduation-cap','guidance'=>'fa-hands-helping'];?>
+<a class="an-summary-card" href="<?=$anEscape($anURL(['type'=>$key,'p'=>null]))?>" <?=$anType===$key?'aria-current="true"':''?>><span class="an-card-icon" data-type="<?=$key?>"><i class="fas <?=$icons[$key]?>" aria-hidden="true"></i></span><strong><?=$key===''?$total_records:($counts[$key]??0)?></strong><span><?=$label?></span><small><?=$key===''?'Every published update':'View this category'?></small></a>
+<?php endforeach;?></nav>
+<details class="an-filters"><summary><span>Filters<?=$anFilterCount?' ('.$anFilterCount.')':''?></span><small>Search, category and audience</small></summary><form method="GET" class="an-filter-form" data-announcement-filters data-wf-ready="1"><input type="hidden" name="page" value="manage_announcements"><label class="an-search" for="anSearch">Search announcements<input type="search" id="anSearch" name="search" maxlength="150" value="<?=$anEscape($anSearch)?>" placeholder="Search title, message or location"></label><label for="anType">Category<select name="type" id="anType"><option value="">All categories</option><?php foreach($anTypes as $key=>$label):?><option value="<?=$key?>" <?=$anType===$key?'selected':''?>><?=$label?></option><?php endforeach;?></select></label><label for="anAudience">Audience<select name="audience" id="anAudience"><option value="">All audiences</option><?php foreach($anAudiences as $key=>$label):?><option value="<?=$key?>" <?=$anAudience===$key?'selected':''?>><?=$label?></option><?php endforeach;?></select></label><button class="an-secondary" type="submit">Apply filters</button></form></details>
+<div class="an-list-heading"><div><h2><?=$anType!==''?$anEscape($anTypes[$anType]).' announcements':'Published announcements'?></h2><p><?=$matching_records?> <?=$matching_records===1?'announcement':'announcements'?><?=$anAudience!==''?' · '.$anEscape($anAudiences[$anAudience]):''?><?=$anSearch!==''?' · Search: '.$anEscape($anSearch):''?></p></div><?php if($anFilterCount):?><a class="an-text-link" href="layout.php?page=manage_announcements">Clear filters</a><?php endif;?></div>
+<div class="an-list">
+<?php if(!$announcements):?><div class="an-empty"><span class="an-empty-icon"><i class="fas <?=$anFilterCount?'fa-search':'fa-bullhorn'?>" aria-hidden="true"></i></span><h3><?=$anFilterCount?'No matching announcements':'No announcements yet'?></h3><p><?=$anFilterCount?'Try a different search or clear your filters.':'Create an announcement to share an update with students or examinees.'?></p></div><?php endif;?>
+<?php foreach($announcements as $a):$type=$a['event_type']??'general';$anHomepage=$a['location']==='__HOMEPAGE__';$preview=preg_replace('/\s+/u',' ',trim($a['message']));$long=mb_strlen($preview)>165;$preview=mb_substr($preview,0,165).($long?'…':'');?>
+<article class="an-announcement" data-announcement-id="<?=(int)$a['id']?>"><div class="an-announcement-main"><div class="an-card-meta"><span class="an-type" data-type="<?=$anEscape($type)?>"><?=$anEscape($anTypes[$type]??ucwords(str_replace('_',' ',$type)))?></span><span class="an-audience"><i class="fas fa-users" aria-hidden="true"></i> Notifications: <?=$anEscape($anAudiences[$a['target_audience']]??str_replace('_',' ',$a['target_audience']??''))?></span><span class="an-public-badge" data-visibility="<?=!$a['show_on_homepage']?'private':(!empty($a['expires_on'])&&$a['expires_on']<date('Y-m-d')?'expired':'public')?>"><?=!$a['show_on_homepage']?'Portal only':(!empty($a['expires_on'])&&$a['expires_on']<date('Y-m-d')?'Homepage expired':'Visible to everyone')?></span><?php if($a['is_pinned']):?><span class="an-type"><i class="fas fa-thumbtack" aria-hidden="true"></i> Pinned</span><?php endif;?></div><h3><button type="button" data-announcement-view="<?=(int)$a['id']?>"><?=$anEscape($a['title'])?></button></h3><p class="an-message-preview"><?=$anEscape($preview)?></p><?php if($a['event_date']||(!$anHomepage&&$a['location'])):?><div class="an-event-meta"><?php if($a['event_date']):?><span><i class="far fa-calendar" aria-hidden="true"></i><?=$anEscape(date('M j, Y',strtotime($a['event_date'])))?><?=$a['event_time']?' · '.$anEscape(date('g:i A',strtotime($a['event_time']))):''?></span><?php endif;?><?php if(!$anHomepage&&$a['location']):?><span><i class="fas fa-map-marker-alt" aria-hidden="true"></i><?=$anEscape($a['location'])?></span><?php endif;?></div><?php endif;?></div><aside class="an-announcement-side"><p class="an-sent"><strong><?=(int)$a['notification_count']?></strong><span>notifications sent</span></p><p class="an-author"><?=$anEscape(trim(($a['first_name']??'').' '.($a['last_name']??''))?:'System')?><time datetime="<?=$anEscape($a['created_at'])?>"><?=$anEscape(date('M j, Y',strtotime($a['created_at'])))?></time></p><div class="an-actions"><button type="button" class="an-secondary" data-announcement-view="<?=(int)$a['id']?>"><i class="far fa-eye" aria-hidden="true"></i>View</button><form data-portal-save method="POST" data-confirm-title="Delete announcement?" data-confirm-message="This will remove the announcement and its associated notifications." data-confirm-label="Delete announcement"><input type="hidden" name="action" value="delete_announcement"><input type="hidden" name="announcement_id" value="<?=(int)$a['id']?>"><button type="submit" class="an-delete" aria-label="Delete <?=$anEscape($a['title'])?>"><i class="far fa-trash-alt" aria-hidden="true"></i>Delete</button></form></div></aside></article>
+<?php endforeach;?></div>
+<footer class="an-pagination"><span><?=$matching_records?'Showing '.($offset+1).'–'.min($offset+$per_page,$matching_records).' of '.$matching_records:'0 announcements'?></span><nav aria-label="Announcements pagination"><?php if($page_no>1):?><a class="an-secondary" rel="prev" href="<?=$anEscape($anURL(['p'=>$page_no-1]))?>">Previous</a><?php else:?><button class="an-secondary" disabled>Previous</button><?php endif;?><span>Page <?=$page_no?> of <?=$total_pages?></span><?php if($page_no<$total_pages):?><a class="an-secondary" rel="next" href="<?=$anEscape($anURL(['p'=>$page_no+1]))?>">Next</a><?php else:?><button class="an-secondary" disabled>Next</button><?php endif;?></nav></footer>
+</section>
+<div id="announcementModal" class="pd-overlay hidden an-dialog" data-portal-dialog data-managed-dialog role="dialog" aria-modal="true" aria-labelledby="anCreateTitle"><div class="pd-card"><header class="pd-header"><span class="pd-heading-icon" aria-hidden="true"><i class="fas fa-bullhorn"></i></span><div class="pd-heading-copy"><p class="an-eyebrow">SHARE AN UPDATE</p><h2 id="anCreateTitle">Create announcement</h2><p>Write your message and choose who should receive it.</p></div><button type="button" class="pd-close" aria-label="Close create announcement" data-dialog-close="announcementModal">×</button></header>
+<form data-portal-save method="POST" id="anCreateForm"><input type="hidden" name="action" value="create_announcement"><div class="pd-body"><fieldset class="an-fieldset"><legend>1. Announcement</legend><div class="pd-field"><label for="anAnnouncementTitle">Title <span aria-hidden="true">*</span></label><input type="text" id="anAnnouncementTitle" name="title" maxlength="255" required value="<?=$anEscape($anForm('title'))?>" placeholder="Give your announcement a clear title"></div><div class="pd-field"><label for="anMessage">Message <span aria-hidden="true">*</span></label><textarea id="anMessage" name="message" rows="5" required placeholder="What do students or examinees need to know?"><?=$anEscape($anForm('message'))?></textarea></div></fieldset><div class="pd-field an-template-picker"><label for="anTemplate">Template image</label><select id="anTemplate" name="template_theme"><option value="classic" <?=$anForm('template_theme','blue-gold')==='classic'?'selected':''?>>Classic blue (no image)</option><option value="blue-gold" <?=$anForm('template_theme','blue-gold')==='blue-gold'?'selected':''?>>Blue & gold · General notices</option><option value="teal-guidance" <?=$anForm('template_theme','blue-gold')==='teal-guidance'?'selected':''?>>Teal · Guidance & support</option><option value="purple-academic" <?=$anForm('template_theme','blue-gold')==='purple-academic'?'selected':''?>>Purple · Academic updates</option><option value="coral-events" <?=$anForm('template_theme','blue-gold')==='coral-events'?'selected':''?>>Coral · Events & activities</option></select><p class="pd-hint">Your title and message are added automatically. Preview the design before saving.</p><img id="anTemplatePreview" class="an-template-thumbnail" alt="Selected announcement background" loading="lazy" hidden></div><fieldset class="an-fieldset"><legend>2. Category & notifications</legend><div class="pd-grid"><div class="pd-field"><label for="anEventType">Category</label><select id="anEventType" name="event_type"><?php foreach(['general'=>'General','academic'=>'Academic','guidance'=>'Guidance'] as $key=>$label):?><option value="<?=$key?>" <?=$anForm('event_type','general')===$key?'selected':''?>><?=$label?></option><?php endforeach;?></select></div><div class="pd-field"><label for="anTarget">Notify</label><select id="anTarget" name="target_audience"><?php foreach(['all_students'=>'Students','all_examinees'=>'Examinees','all_users'=>'Students & examinees'] as $key=>$label):?><option value="<?=$key?>" <?=$anForm('target_audience','all_students')===$key?'selected':''?>><?=$label?></option><?php endforeach;?></select></div></div><div class="an-reach-note"><i class="fas fa-paper-plane" aria-hidden="true"></i><p id="anReach" aria-live="polite"></p></div></fieldset><fieldset class="an-fieldset an-publication-fields"><legend>3. Homepage visibility</legend><label class="an-check-row" for="anPublic"><input type="checkbox" id="anPublic" name="show_on_homepage" value="1" <?=isset($_POST['show_on_homepage'])?'checked':''?>><span><strong>Visible to everyone</strong><small>Show on the public homepage, including to visitors who are not signed in. The notification audience does not restrict public visibility. Leave unchecked for selected users only.</small></span></label><label class="an-check-row an-pin-row" for="anPinned"><input type="checkbox" id="anPinned" name="is_pinned" value="1" <?=isset($_POST['show_on_homepage'],$_POST['is_pinned'])?'checked':''?>><span><strong>Pin as the most important announcement</strong><small>Replaces the current pinned homepage notice.</small></span></label><div class="pd-field an-expiry-field"><label for="anExpiry">Homepage expiry date <span class="pd-optional">Optional</span></label><input type="date" id="anExpiry" name="expires_on" value="<?=$anEscape($anForm('expires_on'))?>"><p class="pd-hint">Visible through this date in Philippine time. After that, it disappears from the homepage; sent notifications stay in account history.</p></div></fieldset>
+<details class="an-event-fields" id="anEventDetails" <?=($anForm('event_date')||$anForm('event_time')||$anForm('location'))?'open':''?>><summary><span><i class="far fa-calendar" aria-hidden="true"></i>Event details</span><small>Optional date, time & location</small></summary><div class="an-event-body"><div class="pd-grid"><div class="pd-field"><label for="anEventDate">Event date</label><input type="date" name="event_date" id="anEventDate" value="<?=$anEscape($anForm('event_date'))?>"></div><div class="pd-field"><label for="anEventTime">Event time</label><input type="time" name="event_time" id="anEventTime" value="<?=$anEscape($anForm('event_time'))?>"></div></div><div class="pd-field"><label for="anLocation">Location</label><input type="text" name="location" id="anLocation" maxlength="255" placeholder="e.g. Guidance office" value="<?=$anEscape($anForm('location'))?>"></div></div></details><p class="pd-hint an-required-note">* Required fields. Publishing sends a notification to the selected audience.</p></div><footer class="pd-footer"><button type="button" class="pd-button" data-dialog-close="announcementModal">Cancel</button><button type="button" class="pd-button" id="anPreview"><i class="far fa-eye" aria-hidden="true"></i>Preview</button><button type="submit" class="pd-button pd-button-primary"><i class="fas fa-paper-plane" aria-hidden="true"></i>Publish announcement</button></footer></form></div></div>
+<div id="announcementViewModal" class="pd-overlay hidden an-dialog an-view-dialog" data-portal-dialog data-managed-dialog role="dialog" aria-modal="true" aria-labelledby="anViewTitle"><div class="pd-card"><header class="pd-header"><span class="pd-heading-icon" aria-hidden="true"><i class="far fa-newspaper"></i></span><div class="pd-heading-copy"><p class="an-eyebrow" id="anViewEyebrow">PUBLISHED UPDATE</p><h2 id="anViewTitle">Announcement</h2><p id="anViewSubtitle">Full message and event information.</p></div><button type="button" class="pd-close" aria-label="Close announcement" data-dialog-close="announcementViewModal">×</button></header><div class="pd-body"><div id="anViewContent"></div><details class="an-event-fields an-inline-visibility" id="anViewVisibility" hidden><summary><span><i class="fas fa-sliders-h" aria-hidden="true"></i>Visibility & template settings</span></summary><form data-portal-save method="POST" id="anVisibilityForm"><input type="hidden" name="action" value="update_visibility"><input type="hidden" name="announcement_id" id="anVisibilityId"><div class="an-inline-visibility-body"><p class="pd-hint">Change the template, public visibility, pinning or expiry. Saving will not resend notifications.</p><label class="an-check-row" for="anVisibilityPublic"><input type="checkbox" id="anVisibilityPublic" name="show_on_homepage" value="1"><span><strong>Visible to everyone</strong><small>Show on the public homepage without signing in. The notification audience does not restrict public visibility.</small></span></label><label class="an-check-row an-pin-row" for="anVisibilityPinned"><input type="checkbox" id="anVisibilityPinned" name="is_pinned" value="1"><span><strong>Pin as the most important announcement</strong><small>Only one homepage announcement can be pinned.</small></span></label><div class="pd-field an-expiry-field"><label for="anVisibilityExpiry">Homepage expiry date <span class="pd-optional">Optional</span></label><input type="date" id="anVisibilityExpiry" name="expires_on"><p class="pd-hint">Leave blank for no expiry. Hidden after this date in Philippine time. Previously sent notifications are kept.</p></div><div class="pd-field an-template-picker"><label for="anVisibilityTemplate">Template image</label><select id="anVisibilityTemplate" name="template_theme"><option value="classic">Classic blue (no image)</option><option value="blue-gold">Blue & gold · General notices</option><option value="teal-guidance">Teal · Guidance & support</option><option value="purple-academic">Purple · Academic updates</option><option value="coral-events">Coral · Events & activities</option></select><p class="pd-hint">Your title and message are added automatically. Preview the design before saving.</p><img id="anVisibilityTemplatePreview" class="an-template-thumbnail" alt="Selected announcement background" loading="lazy" hidden></div><div class="an-inline-visibility-actions"><button type="submit" class="pd-button pd-button-primary">Save settings</button></div></div></form></details>
+</div><footer class="pd-footer"><button type="button" class="pd-button" data-dialog-close="announcementViewModal" id="anViewClose">Close</button></footer></div></div>
+<script type="application/json" id="anWorkspaceData"><?=json_encode(['recipients'=>$anRecipients,'announcements'=>$anData,'today'=>date('Y-m-d'),'hasError'=>(bool)$error_message&&($_POST['action']??'')==='create_announcement','failedVisibility'=>($error_message&&($_POST['action']??'')==='update_visibility')?['id'=>(int)($_POST['announcement_id']??0),'homepage'=>isset($_POST['show_on_homepage']),'pinned'=>isset($_POST['is_pinned']),'expires'=>$anForm('expires_on'),'theme'=>$anForm('template_theme','classic')]:null],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE)?></script>
+<script src="../assets/js/announcements-workspace.js?v=20261028-consolidated"></script>

@@ -1,36 +1,48 @@
 <?php
-// Profile content partial — loaded by layout.php
-// Redirect to existing profile page (standalone) until converted
+if(!defined('IN_LAYOUT')){header('Location: layout.php?page=profile');exit;}
+require_once __DIR__.'/../classes/SystemLogger.php';
+$_SESSION['profile_csrf']=$_SESSION['profile_csrf']??bin2hex(random_bytes(24));
+$profile_messages=fetchSessionMessages();$success_message=$profile_messages['success'];$error_message=$profile_messages['error'];
+if($_SERVER['REQUEST_METHOD']==='POST'){
+    try{
+        if(!is_string($_POST['csrf']??null)||!hash_equals($_SESSION['profile_csrf'],$_POST['csrf']))throw new RuntimeException('Please refresh the page and try again.');
+        $profile_action=$_POST['profile_action']??'';
+        if($profile_action==='details'){
+            $profile_first=trim($_POST['first_name']??'');$profile_middle=trim($_POST['middle_name']??'');$profile_last=trim($_POST['last_name']??'');$profile_email=trim($_POST['email']??'');
+            if($profile_first===''||$profile_last==='')throw new RuntimeException('Enter your first and last names.');
+            if(mb_strlen($profile_first)>50||mb_strlen($profile_last)>50||mb_strlen($profile_middle)>100)throw new RuntimeException('A name is longer than the supported field length.');
+            if($profile_email!==''&&(!filter_var($profile_email,FILTER_VALIDATE_EMAIL)||strlen($profile_email)>100))throw new RuntimeException('Enter a valid email address, up to 100 characters.');
+            if($role!=='student'&&$profile_email==='')throw new RuntimeException('An email address is required for this account.');
+            if($profile_email!==''){$check=$db->prepare('SELECT id FROM users WHERE email=? AND id<>?');$check->execute([$profile_email,$uid]);if($check->fetchColumn())throw new RuntimeException('This email address is already used by another account.');}
+            $save=$db->prepare('UPDATE users SET first_name=?,middle_name=?,last_name=?,email=? WHERE id=?');$save->execute([$profile_first,$profile_middle?:null,$profile_last,$profile_email?:null,$uid]);
+            $_SESSION['first_name']=$profile_first;$_SESSION['last_name']=$profile_last;$_SESSION['user_email']=$profile_email;
+            $_SESSION['success_message']='Your personal details have been updated.';(new SystemLogger($db))->info('Updated own profile details',$uid);
+        }elseif($profile_action==='password'){
+            $current_password=$_POST['current_password']??'';$new_password=$_POST['new_password']??'';
+            if(strlen($new_password)<8)throw new RuntimeException('Choose a new password with at least 8 characters.');
+            if($new_password!==($_POST['confirm_password']??''))throw new RuntimeException('The new passwords do not match.');
+            $check=$db->prepare('SELECT password FROM users WHERE id=?');$check->execute([$uid]);$existing_hash=$check->fetchColumn();
+            if(!$existing_hash||!password_verify($current_password,$existing_hash))throw new RuntimeException('The current password is incorrect.');
+            $save=$db->prepare('UPDATE users SET password=?,reset_token=NULL,reset_token_expires=NULL WHERE id=?');$save->execute([password_hash($new_password,PASSWORD_DEFAULT),$uid]);
+            $_SESSION['success_message']='Your password has been changed.';(new SystemLogger($db))->info('Changed own password',$uid);
+        }else throw new RuntimeException('Choose a supported profile action.');
+        header('Location: '.portalSaveRedirect('layout.php?page=profile'));exit;
+    }catch(Throwable $e){$error_message=$e instanceof PDOException?'Your changes could not be saved. Please try again.':$e->getMessage();}
+}
+$profile_stmt=$db->prepare('SELECT id,first_name,middle_name,last_name,email,role,position,is_active,created_at FROM users WHERE id=?');$profile_stmt->execute([$uid]);$profile_user=$profile_stmt->fetch(PDO::FETCH_ASSOC)?:$user_info;
+$profile_stmt=$db->prepare('SELECT student_id,department,program,strand,grade_level FROM student_profiles WHERE user_id=?');$profile_stmt->execute([$uid]);$profile_student=$profile_stmt->fetch(PDO::FETCH_ASSOC);
+$profile_roles=['super_admin'=>'Superadmin','admin'=>'Guidance counselor','guidance_advocate'=>'Guidance advocate','student'=>'Student','examinee'=>'Examinee'];
+$profile_full_name=trim(implode(' ',array_filter([$profile_user['first_name'],$profile_user['middle_name']??'',$profile_user['last_name']])));
+$profile_initials=mb_substr($profile_user['first_name'],0,1).mb_substr($profile_user['last_name'],0,1);
 ?>
-<div class="flex items-center justify-between mb-5">
-    <h1 class="text-xl font-bold text-primary"><i class="fas fa-user mr-2"></i>My Profile</h1>
-</div>
-<div class="bg-white rounded-xl shadow-sm p-6">
-    <?php
-    $sp = null;
-    try { $s = $db->prepare("SELECT * FROM student_profiles WHERE user_id = ?"); $s->execute([$uid]); $sp = $s->fetch(PDO::FETCH_ASSOC); } catch (Exception $e) {}
-    $u = null;
-    try { $u_stmt = $db->prepare("SELECT * FROM users WHERE id = ?"); $u_stmt->execute([$uid]); $u = $u_stmt->fetch(PDO::FETCH_ASSOC); } catch (Exception $e) {}
-    ?>
-    <div class="grid md:grid-cols-2 gap-6">
-        <div class="space-y-4">
-            <h3 class="font-bold text-primary text-sm border-b pb-2">Account Information</h3>
-            <div><label class="text-xs font-medium text-gray-500">Email</label><p class="text-sm"><?= htmlspecialchars($u['email']??'—') ?></p></div>
-            <div><label class="text-xs font-medium text-gray-500">Role</label><p class="text-sm"><?= ucfirst(str_replace('_',' ',$u['role']??'—')) ?></p></div>
-            <div><label class="text-xs font-medium text-gray-500">Member Since</label><p class="text-sm"><?= date('F j, Y', strtotime($u['created_at']??'now')) ?></p></div>
-        </div>
-        <?php if($sp): ?>
-        <div class="space-y-4">
-            <h3 class="font-bold text-primary text-sm border-b pb-2">Academic Information</h3>
-            <div><label class="text-xs font-medium text-gray-500">Student ID</label><p class="text-sm"><?= htmlspecialchars($sp['student_id']??'—') ?></p></div>
-            <div><label class="text-xs font-medium text-gray-500">Department</label><p class="text-sm"><?= htmlspecialchars($sp['department']??'—') ?></p></div>
-            <div><label class="text-xs font-medium text-gray-500">Grade Level</label><p class="text-sm"><?= htmlspecialchars($sp['grade_level']??'—') ?></p></div>
-            <div><label class="text-xs font-medium text-gray-500">Program/Strand</label><p class="text-sm"><?= htmlspecialchars(($sp['program']??'') ?: ($sp['strand']??'—')) ?></p></div>
-            <div><label class="text-xs font-medium text-gray-500">Contact</label><p class="text-sm"><?= htmlspecialchars($sp['contact_number']??'—') ?></p></div>
-        </div>
-        <?php endif; ?>
-    </div>
-    <div class="mt-6 pt-4 border-t">
-        <a href="profile.php" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary-dark transition-colors"><i class="fas fa-edit mr-1"></i>Edit Profile</a>
-    </div>
-</div>
+<section class="profile-page" aria-labelledby="profile-title">
+    <header class="profile-heading"><div><p class="profile-eyebrow">Your account</p><h1 id="profile-title">My profile</h1><p>Keep your personal details current and manage your sign-in password.</p></div><a href="layout.php?page=dashboard" class="profile-button"><i class="fas fa-arrow-left" aria-hidden="true"></i>Back to dashboard</a></header>
+    <?php if($success_message||$error_message):?><script type="application/json" data-portal-feedback><?=json_encode(['success'=>$success_message,'error'=>$error_message],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE)?></script><?php endif;?>
+    <div class="profile-layout"><aside class="profile-identity"><span class="profile-large-avatar"><?=htmlspecialchars(mb_strtoupper($profile_initials))?></span><h2><?=htmlspecialchars($profile_full_name)?></h2><p class="profile-role"><?=htmlspecialchars($profile_roles[$profile_user['role']]??ucwords(str_replace('_',' ',$profile_user['role'])))?></p><span class="profile-state <?=empty($profile_user['is_active'])?'is-disabled':''?>"><?=empty($profile_user['is_active'])?'Sign-in disabled':'Active account'?></span><div class="profile-joined"><i class="far fa-calendar" aria-hidden="true"></i><span>Member since<strong><?=htmlspecialchars(date('F j, Y',strtotime($profile_user['created_at'])))?></strong></span></div><p class="profile-office-note">Your role and school identifiers are managed by the Guidance Office.</p></aside>
+    <div class="profile-panels"><section class="profile-panel"><div class="profile-panel-heading"><div><h2>Personal information</h2><p>Your name and account email address.</p></div><button type="button" class="profile-button primary" onclick="openProfileDialog('profileDetailsDialog')"><i class="fas fa-pen" aria-hidden="true"></i>Edit details</button></div><dl class="profile-details"><div><dt>First name</dt><dd><?=htmlspecialchars($profile_user['first_name'])?></dd></div><div><dt>Last name</dt><dd><?=htmlspecialchars($profile_user['last_name'])?></dd></div><div><dt>Middle name</dt><dd><?=htmlspecialchars($profile_user['middle_name']?:'Not provided')?></dd></div><div><dt>Email address</dt><dd><?=htmlspecialchars($profile_user['email']?:'Not provided')?></dd></div><?php if(!empty($profile_user['position'])):?><div><dt>Position</dt><dd><?=htmlspecialchars($profile_user['position'])?></dd></div><?php endif;?></dl></section>
+    <?php if($profile_student):?><section class="profile-panel"><div class="profile-panel-heading"><div><h2>Academic information</h2><p>Your current school record. Contact the Guidance Office for corrections.</p></div></div><dl class="profile-details"><?php foreach(['student_id'=>'Student ID','department'=>'Department','grade_level'=>'Grade / year level','program'=>'College program','strand'=>'SHS strand'] as $key=>$label):?><div><dt><?=$label?></dt><dd><?=htmlspecialchars($profile_student[$key]?:'Not provided')?></dd></div><?php endforeach;?></dl></section><?php endif;?>
+    <section class="profile-panel profile-security"><span class="profile-security-icon"><i class="fas fa-shield-halved" aria-hidden="true"></i></span><div><h2>Password & security</h2><p>Use a password with at least 8 characters. You’ll need your current password to change it.</p></div><button type="button" class="profile-button" onclick="openProfileDialog('profilePasswordDialog')">Change password</button></section></div></div>
+</section>
+<div id="profileDetailsDialog" class="pd-overlay hidden" data-portal-dialog data-managed-dialog data-dialog-tone="edit" role="dialog" aria-modal="true" aria-labelledby="profileDetailsTitle" aria-describedby="profileDetailsHint"><div class="pd-card"><div class="pd-header"><span class="pd-heading-icon"><i class="fas fa-user-pen" aria-hidden="true"></i></span><div class="pd-heading-copy"><h2 id="profileDetailsTitle">Edit personal details</h2><p id="profileDetailsHint">Update your name and email. Fields marked * are required.</p></div><button type="button" class="pd-close" data-dialog-close="profileDetailsDialog" aria-label="Close personal details"><i class="fas fa-xmark" aria-hidden="true"></i></button></div><form method="post" action="layout.php?page=profile" data-portal-save><input type="hidden" name="csrf" value="<?=htmlspecialchars($_SESSION['profile_csrf'])?>"><input type="hidden" name="profile_action" value="details"><div class="pd-body"><div class="pd-grid"><?php foreach(['first_name'=>'First name *','last_name'=>'Last name *','middle_name'=>'Middle name','email'=>'Email address'.($role==='student'?'':' *')] as $key=>$label):?><div class="pd-field"><label for="profile-<?=$key?>"><?=$label?></label><input id="profile-<?=$key?>" name="<?=$key?>" type="<?=$key==='email'?'email':'text'?>" value="<?=htmlspecialchars($profile_user[$key]??'',ENT_QUOTES)?>" maxlength="<?=$key==='email'||$key==='middle_name'?100:50?>" <?=in_array($key,['first_name','last_name'])||$key==='email'&&$role!=='student'?'required':''?> autocomplete="<?=['first_name'=>'given-name','last_name'=>'family-name','middle_name'=>'additional-name','email'=>'email'][$key]?>"></div><?php endforeach;?></div></div><div class="pd-footer"><button type="button" class="pd-button" data-dialog-close="profileDetailsDialog">Cancel</button><button type="submit" class="pd-button pd-button-primary">Save changes</button></div></form></div></div>
+<div id="profilePasswordDialog" class="pd-overlay hidden" data-portal-dialog data-managed-dialog data-dialog-tone="security" role="dialog" aria-modal="true" aria-labelledby="profilePasswordTitle" aria-describedby="profilePasswordHint"><div class="pd-card pd-card-small"><div class="pd-header"><span class="pd-heading-icon"><i class="fas fa-key" aria-hidden="true"></i></span><div class="pd-heading-copy"><h2 id="profilePasswordTitle">Change password</h2><p id="profilePasswordHint">Confirm your current password before choosing a new one.</p></div><button type="button" class="pd-close" data-dialog-close="profilePasswordDialog" aria-label="Close password dialog"><i class="fas fa-xmark" aria-hidden="true"></i></button></div><form method="post" action="layout.php?page=profile" data-portal-save><input type="hidden" name="csrf" value="<?=htmlspecialchars($_SESSION['profile_csrf'])?>"><input type="hidden" name="profile_action" value="password"><div class="pd-body"><?php foreach(['current_password'=>'Current password','new_password'=>'New password','confirm_password'=>'Confirm new password'] as $key=>$label):?><div class="pd-field" style="margin-bottom:17px"><label for="profile-<?=$key?>"><?=$label?> *</label><div class="pd-password"><input id="profile-<?=$key?>" name="<?=$key?>" type="password" required <?=$key!=='current_password'?'minlength="8"':''?> autocomplete="<?=$key==='current_password'?'current-password':'new-password'?>"><button type="button" data-password-toggle="profile-<?=$key?>" aria-controls="profile-<?=$key?>" aria-pressed="false">Show</button></div></div><?php endforeach;?><p class="pd-hint">Choose at least 8 characters and avoid reusing a password from another service.</p></div><div class="pd-footer"><button type="button" class="pd-button" data-dialog-close="profilePasswordDialog">Cancel</button><button type="submit" class="pd-button pd-button-primary">Change password</button></div></form></div></div>
+<script>function openProfileDialog(id){const dialog=document.getElementById(id);window.PortalDialogs.open(dialog);dialog.querySelector('.pd-body input').focus({preventScroll:true});}</script>

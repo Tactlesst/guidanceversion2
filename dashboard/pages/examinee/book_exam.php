@@ -17,6 +17,7 @@ try {
     }
 } catch (Exception $e) { $holiday = null; }
 
+$_SESSION['booking_csrf'] = $_SESSION['booking_csrf'] ?? bin2hex(random_bytes(24));
 $success_message = '';
 $error_message = '';
 
@@ -48,7 +49,7 @@ if($completed_exam) {
 $active_exam_query = "SELECT ea.id, ea.status, ea.preferred_date, ea.preferred_time
                       FROM entrance_exam_appointments ea
                       WHERE ea.user_id = ? 
-                      AND ea.status IN ('confirmed', 'awaiting_results')
+                      AND ea.status IN ('pending', 'confirmed', 'awaiting_results')
                       ORDER BY ea.preferred_date ASC
                       LIMIT 1";
 $active_exam_stmt = $db->prepare($active_exam_query);
@@ -58,7 +59,9 @@ $has_active_exam = !empty($active_exam);
 
 // Handle form submission
 if($_POST && isset($_POST['book_appointment'])) {
-    if($has_active_exam) {
+    if (!hash_equals($_SESSION['booking_csrf'], $_POST['csrf'] ?? '')) {
+        $error_message = 'Please reload the booking page and try again.';
+    } elseif($has_active_exam) {
         $error_message = "You already have an active entrance exam appointment. You cannot book a new appointment until your current appointment is completed or marked as missed.";
     } else {
         require_once __DIR__ . '/../../../classes/EntranceExam.php';
@@ -67,7 +70,7 @@ if($_POST && isset($_POST['book_appointment'])) {
         $entrance_exam->user_id = $uid;
         $entrance_exam->preferred_date = $_POST['preferred_date'];
         $entrance_exam->preferred_time = $_POST['preferred_time'] ?? '';
-        $entrance_exam->grade_level_applying = $_POST['grade_level_applying'];
+        $entrance_exam->grade_level_applying = $user_info['grade_level_applying'];
         $entrance_exam->previous_school = $_POST['previous_school'];
         $entrance_exam->preferred_program = $_POST['preferred_program'] ?? null;
 
@@ -90,7 +93,9 @@ if($_POST && isset($_POST['book_appointment'])) {
         }
         
         if(empty($error_message)) {
-            $appointment_id = $entrance_exam->create();
+            require_once __DIR__ . '/../../../classes/ExamBooking.php';
+            try { $appointment_id = (new ExamBooking($db))->book($uid, $entrance_exam->preferred_date, $entrance_exam->preferred_time, $entrance_exam->previous_school, $entrance_exam->preferred_program); }
+            catch (Throwable $e) { $appointment_id = false; $error_message = $e->getMessage(); }
             if($appointment_id) {
                 require_once __DIR__ . '/../../../classes/Notification.php';
                 require_once __DIR__ . '/../../../classes/NotificationService.php';
@@ -112,12 +117,14 @@ if($_POST && isset($_POST['book_appointment'])) {
                 echo '<script>window.location.href = "layout.php?page=book_exam&success=1";</script>';
                 return;
             } else {
-                $error_message = "Failed to submit your application. Please try again.";
+                $error_message = $error_message ?: "Failed to submit your application. Please try again.";
             }
         }
     }
 }
 
+require_once __DIR__ . '/../../../classes/ExamBooking.php';
+$availability = new ExamBooking($db);
 // Calendar navigation
 $current_month = date('n'); $current_year = date('Y');
 $month = isset($_GET['month']) ? (int)$_GET['month'] : $current_month;
@@ -248,7 +255,7 @@ $min_date = $today_str;
                             $holiday_name = $holiday_dates[$ds] ?? '';
                             $is_past = $ds < $today_str;
                             $is_sunday = date('w', strtotime($ds)) === '0';
-                            $is_bookable = !$is_past && !$is_holiday && !$is_sunday && !$has_active_exam;
+                            $is_bookable = !$is_past && !$is_holiday && !$is_sunday && !$has_active_exam && count($availability->slots($ds)) > 0;
                             $has_my_exam = isset($my_exams[$ds]);
                             $day_exam_events = $exam_events[$ds] ?? [];
                         ?>
@@ -346,6 +353,8 @@ $min_date = $today_str;
             <?php endif; ?>
 
             <form method="POST" id="bookingForm">
+<input type="hidden" name="book_appointment" value="1">
+<input type="hidden" name="csrf" value="<?= htmlspecialchars($_SESSION['booking_csrf']) ?>">
                 <!-- Schedule -->
                 <div class="mb-4">
                     <h3 class="font-semibold text-primary text-sm mb-3"><i class="fas fa-calendar mr-1"></i>Selected Schedule</h3>
@@ -379,11 +388,11 @@ $min_date = $today_str;
                             <label class="block text-sm font-medium text-gray-700 mb-1">Grade Level Applying <span class="text-red-500">*</span></label>
                             <select name="grade_level_applying" required class="w-full rounded-lg border-2 border-gray-200 px-4 py-2.5 text-sm focus:border-primary outline-none transition-all">
                                 <option value="">Select Grade Level</option>
-                                <option value="Grade 7">Grade 7</option><option value="Grade 8">Grade 8</option>
-                                <option value="Grade 9">Grade 9</option><option value="Grade 10">Grade 10</option>
-                                <option value="Grade 11">Grade 11</option><option value="Grade 12">Grade 12</option>
-                                <option value="1st Year College">1st Year College</option><option value="2nd Year College">2nd Year College</option>
-                                <option value="3rd Year College">3rd Year College</option><option value="4th Year College">4th Year College</option>
+                                <option value="Grade 7" <?= (($user_info['grade_level_applying']??'')==='Grade 7')?'selected':'' ?>>Grade 7</option><option value="Grade 8" <?= (($user_info['grade_level_applying']??'')==='Grade 8')?'selected':'' ?>>Grade 8</option>
+                                <option value="Grade 9" <?= (($user_info['grade_level_applying']??'')==='Grade 9')?'selected':'' ?>>Grade 9</option><option value="Grade 10" <?= (($user_info['grade_level_applying']??'')==='Grade 10')?'selected':'' ?>>Grade 10</option>
+                                <option value="Grade 11" <?= (($user_info['grade_level_applying']??'')==='Grade 11')?'selected':'' ?>>Grade 11</option><option value="Grade 12" <?= (($user_info['grade_level_applying']??'')==='Grade 12')?'selected':'' ?>>Grade 12</option>
+                                <option value="1st Year College" <?= (($user_info['grade_level_applying']??'')==='1st Year College')?'selected':'' ?>>1st Year College</option><option value="2nd Year College" <?= (($user_info['grade_level_applying']??'')==='2nd Year College')?'selected':'' ?>>2nd Year College</option>
+                                <option value="3rd Year College" <?= (($user_info['grade_level_applying']??'')==='3rd Year College')?'selected':'' ?>>3rd Year College</option><option value="4th Year College" <?= (($user_info['grade_level_applying']??'')==='4th Year College')?'selected':'' ?>>4th Year College</option>
                             </select>
                         </div>
                         <div>
@@ -411,15 +420,7 @@ $min_date = $today_str;
 </div>
 
 <script>
-const allTimeSlots = [
-    { value: '08:00:00', label: '8:00 AM' },
-    { value: '09:00:00', label: '9:00 AM' },
-    { value: '10:00:00', label: '10:00 AM' },
-    { value: '11:00:00', label: '11:00 AM' },
-    { value: '13:00:00', label: '1:00 PM' },
-    { value: '14:00:00', label: '2:00 PM' },
-    { value: '15:00:00', label: '3:00 PM' }
-];
+let allTimeSlots = [];
 const bookedSlots = <?= json_encode($booked_slots) ?>;
 const myExams = <?= json_encode($my_exams) ?>;
 const holidayDates = <?= json_encode(array_keys($holiday_dates)) ?>;
@@ -450,60 +451,39 @@ function selectDate(dateStr) {
     dateInfo.classList.remove('hidden');
 }
 
-function loadTimeSlots(dateStr) {
+let availabilityRequest = 0;
+async function loadTimeSlots(dateStr) {
+    const request = ++availabilityRequest;
     const timeSelect = document.getElementById('examTime');
-    const slotsContainer = document.getElementById('timeSlotsContainer');
     const slotsDiv = document.getElementById('timeSlots');
-    const dateBookings = bookedSlots[dateStr] || {};
-    const dateMyExams = myExams[dateStr] || [];
-    
-    timeSelect.innerHTML = '<option value="">Select a time slot</option>';
-    slotsDiv.innerHTML = '';
-    let availableCount = 0;
-    
-    allTimeSlots.forEach(slot => {
-        const bookedCount = dateBookings[slot.value] || 0;
-        const isMySlot = dateMyExams.some(a => a.preferred_time === slot.value);
-        const isFull = bookedCount >= 3;
-        
-        if (!isFull) {
-            const opt = document.createElement('option');
-            opt.value = slot.value;
-            opt.textContent = slot.label + (bookedCount > 0 ? ' (' + bookedCount + ' booked)' : '');
-            timeSelect.appendChild(opt);
-            availableCount++;
+    timeSelect.innerHTML = '<option value="">Checking availability...</option>';
+    slotsDiv.replaceChildren();
+    const submitButton = document.querySelector('#bookingForm button[type="submit"]');
+    submitButton.disabled = true;
+    document.getElementById('timeSlotsContainer').classList.remove('hidden');
+    try {
+        const response = await fetch('../entrance_exam/available_slots.php?date=' + encodeURIComponent(dateStr), {headers: {'X-Requested-With':'XMLHttpRequest'}});
+        const data = await response.json();
+        if (request !== availabilityRequest) return;
+        if (!response.ok || !Array.isArray(data.slots)) throw new Error('Availability unavailable');
+        allTimeSlots = data.slots;
+        timeSelect.innerHTML = '<option value="">Select a time slot</option>';
+        for (const slot of allTimeSlots) {
+            const option = document.createElement('option'); option.value = slot.value;
+            option.textContent = slot.label + ' (' + slot.remaining + ' slots remaining)'; timeSelect.appendChild(option);
+            const button = document.createElement('button'); button.type = 'button';
+            button.className = 'px-3 py-2 border rounded-lg text-sm'; button.textContent = slot.label;
+            button.onclick = () => { timeSelect.value = slot.value; }; slotsDiv.appendChild(button);
         }
-        
-        const slotBtn = document.createElement('button');
-        slotBtn.type = 'button';
-        slotBtn.className = 'px-3 py-2 rounded-lg text-xs font-medium border-2 transition-all text-center ' +
-            (isMySlot ? 'bg-cyan-100 border-cyan-400 text-cyan-700 cursor-default' :
-            isFull ? 'bg-red-50 border-red-200 text-red-400 cursor-not-allowed line-through' :
-            'bg-white border-gray-200 text-gray-700 hover:border-cyan-400 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer');
-        slotBtn.innerHTML = slot.label + (isMySlot ? '<br><span class="text-[9px]">Your Exam</span>' : '') + (isFull ? '<br><span class="text-[9px]">Full</span>' : '') + (!isFull && !isMySlot && bookedCount > 0 ? '<br><span class="text-[9px]">' + bookedCount + ' booked</span>' : '');
-        
-        if (!isFull && !isMySlot) {
-            slotBtn.onclick = function() {
-                document.querySelectorAll('#timeSlots button').forEach(b => {
-                    if (!b.classList.contains('bg-cyan-100') && !b.classList.contains('bg-red-50')) {
-                        b.classList.remove('border-cyan-500','bg-cyan-50','text-cyan-700');
-                        b.classList.add('border-gray-200','bg-white','text-gray-700');
-                    }
-                });
-                this.classList.remove('border-gray-200','bg-white','text-gray-700');
-                this.classList.add('border-cyan-500','bg-cyan-50','text-cyan-700');
-                timeSelect.value = slot.value;
-            };
+        submitButton.disabled = allTimeSlots.length === 0;
+        if (!allTimeSlots.length) {
+            const message = document.createElement('p'); message.className = 'col-span-full text-sm text-gray-600';
+            message.textContent = 'No available exam slots for this date. Please choose another date or contact the guidance office.'; slotsDiv.appendChild(message);
         }
-        slotsDiv.appendChild(slotBtn);
-    });
-    
-    slotsContainer.classList.remove('hidden');
-    if (availableCount === 0) {
-        const noSlots = document.createElement('div');
-        noSlots.className = 'col-span-4 text-center text-sm text-red-500 py-2';
-        noSlots.innerHTML = '<i class="fas fa-exclamation-circle mr-1"></i>No available time slots. Please choose another date.';
-        slotsDiv.appendChild(noSlots);
+    } catch (error) {
+        if (request !== availabilityRequest) return;
+        timeSelect.innerHTML = '<option value="">Unavailable</option>';
+        const message = document.createElement('p'); message.className = 'col-span-full text-sm'; message.textContent = 'Could not check availability. Please try again.'; slotsDiv.replaceChildren(message);
     }
 }
 

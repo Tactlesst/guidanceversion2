@@ -239,10 +239,10 @@ function fetchStudents() {
                 const missingStudentId = !u.student_id || u.student_id === '';
                 const emailInput = missingEmail ? 
                     `<input type="email" name="emails[${u.id}]" placeholder="Enter email" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none bg-orange-50 border-orange-200">` : 
-                    `<span class="text-gray-500">${esc(u.email||'—')}</span>`;
+                    `<span class="text-gray-500">${esc(u.email||'N/A')}</span>`;
                 const studentIdInput = missingStudentId ? 
                     `<input type="text" name="student_ids[${u.id}]" placeholder="Enter student ID" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-yellow-500 focus:outline-none bg-yellow-50 border-yellow-200">` : 
-                    `<span class="text-gray-500">${esc(u.student_id||'—')}</span>`;
+                    `<span class="text-gray-500">${esc(u.student_id||'N/A')}</span>`;
                 
                 html += `<tr class="hover:bg-gray-50 ${missingEmail || missingStudentId ? 'bg-red-50/50' : ''}">
                     <td class="px-4 py-3 font-medium break-words">${esc(name)}</td>

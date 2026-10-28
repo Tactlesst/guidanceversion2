@@ -1,4 +1,4 @@
 <?php
-// Redirect root URL to login page
-header("Location: auth/login.php");
-exit();
+// Open the public homepage when visiting the website's main address.
+header('Location: homepage.php', true, 302);
+exit;

@@ -75,8 +75,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Update session
             $_SESSION['grade_level_applying'] = $grade_level;
 
-            $redirect = $_GET['redirect'] ?? 'dashboard';
-            header("Location: " . ($redirect === 'pds' ? '../pds/fill_pds.php' : '../dashboard/index.php'));
+            // Always redirect to dashboard using layout system
+            header("Location: ../dashboard/layout.php?page=fill_pds");
             exit();
         }
     } catch (Exception $e) {

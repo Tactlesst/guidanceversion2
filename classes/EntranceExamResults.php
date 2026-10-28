@@ -81,7 +81,7 @@ class EntranceExamResults {
         $this->sanitizeInputs();
 
         // Determine exam result based on qualification
-        $exam_result = !empty($this->qualified_grade) ? 'Qualified' : 'Not Qualified';
+        $exam_result = !empty($this->qualified_grade) ? 'passed' : 'failed';
 
         // Bind parameters
         $stmt->bindParam(":appointment_id", $this->appointment_id);

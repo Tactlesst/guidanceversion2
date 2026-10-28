@@ -1,0 +1,41 @@
+let studentRecordRequest=null,currentViewedStudent=null;
+function srNode(tag,className,text){const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text===null?'':String(text);return node;}
+function srFillSelect(select,values,placeholder){select.replaceChildren();const first=srNode('option','',placeholder);first.value='';select.append(first);for(const value of values||[]){const option=srNode('option','',value);option.value=value;select.append(option);}}
+function updateEditFiltersByDepartment(){
+    const department=document.getElementById('edit_department').value,info=departmentData[department]||{grades:[],strands:[],programs:[]};
+    const grade=document.getElementById('edit_grade_level'),strand=document.getElementById('edit_strand'),program=document.getElementById('edit_program');
+    srFillSelect(grade,info.grades,department?'Select grade / year':'Select department first');srFillSelect(strand,info.strands,'Select strand');srFillSelect(program,info.programs,'Select program');
+    const hasStrands=Boolean(info.strands?.length),hasPrograms=!hasStrands&&Boolean(info.programs?.length);
+    document.getElementById('srStrandField').hidden=!hasStrands;document.getElementById('srProgramField').hidden=!hasPrograms;strand.disabled=!hasStrands;program.disabled=!hasPrograms;strand.required=hasStrands;program.required=hasPrograms;grade.disabled=!info.grades?.length;grade.required=Boolean(info.grades?.length);
+    document.getElementById('srAcademicHint').textContent=!department?'Choose a department to see its available academic options.':hasStrands?'Choose the student’s strand and grade level.':hasPrograms?'Choose the student’s program and college year.':'No strand or program is needed for this department.';
+}
+function editStudentProfile(userId,department,strand,program,gradeLevel){
+    const student=studentRowsById.get(String(userId))||currentViewedStudent||{};
+    document.getElementById('edit_user_id').value=userId;document.getElementById('edit_department').value=department||'';updateEditFiltersByDepartment();
+    document.getElementById('edit_strand').value=strand||'';document.getElementById('edit_program').value=program||'';document.getElementById('edit_grade_level').value=gradeLevel||'';
+    document.getElementById('srAssignStudentName').textContent=[student.first_name,student.middle_name,student.last_name].filter(Boolean).join(' ')||'Selected student';document.getElementById('srAssignStudentId').textContent=student.student_id||'No student ID assigned';
+    window.PortalDialogs.close(document.getElementById('studentRecordModal'));window.PortalDialogs.open(document.getElementById('editStudentProfileModal'));document.getElementById('edit_department').focus({preventScroll:true});
+}
+function assignStudentAcademics(userId){const student=studentRowsById.get(String(userId))||currentViewedStudent;if(!student)return;editStudentProfile(student.id,student.department,student.strand,student.program,student.grade_level);}
+function srDate(value){if(!value)return 'Not available';const date=new Date(value.slice(0,10)+'T12:00:00');return Number.isNaN(date.getTime())?'Not available':date.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
+async function viewStudentRecord(userId){
+    studentRecordRequest?.abort();const controller=new AbortController();studentRecordRequest=controller;currentViewedStudent=null;
+    const modal=document.getElementById('studentRecordModal'),content=document.getElementById('srRecordContent');content.replaceChildren(srNode('p','sr-loading','Loading student record…'));document.getElementById('srRecordAssign').hidden=true;window.PortalDialogs.open(modal);modal.querySelector('.pd-close').focus({preventScroll:true});
+    try{const response=await fetch(BASE+'&action=get_record&id='+encodeURIComponent(userId),{signal:controller.signal});if(!response.ok)throw new Error('Unavailable');const data=await response.json();if(data.error||!data.record)throw new Error('Unavailable');if(controller!==studentRecordRequest||!modal.isConnected||modal.classList.contains('hidden'))return;currentViewedStudent=data.record;studentRowsById.set(String(data.record.id),data.record);renderStudentRecord(data.record);document.getElementById('srRecordAssign').hidden=false;}
+    catch(error){if(error.name==='AbortError'||controller!==studentRecordRequest)return;content.replaceChildren(srNode('p','sr-loading','This student record could not be loaded. Close the window and try again.'));}
+}
+function renderStudentRecord(student){
+    const content=document.getElementById('srRecordContent');content.replaceChildren();const identity=srNode('div','sr-record-identity'),avatar=srNode('span','sr-record-avatar',[student.first_name,student.last_name].filter(Boolean).map(s=>s[0]).join('').toUpperCase()),copy=srNode('div'),status=srNode('span','sr-account-status',Number(student.is_active)?'Active':'Inactive');status.dataset.active=String(Boolean(Number(student.is_active)));avatar.setAttribute('aria-hidden','true');copy.append(srNode('strong','',[student.first_name,student.middle_name,student.last_name].filter(Boolean).join(' ')),srNode('p','',student.student_id||'No student ID assigned'));identity.append(avatar,copy,status);content.append(identity);
+    function section(title,entries){const group=srNode('section','sr-record-section'),heading=srNode('h3','',title),grid=srNode('dl','sr-record-grid');for(const [label,value] of entries){const item=srNode('div');item.append(srNode('dt','',label),srNode('dd','',value||'Not assigned'));grid.append(item);}group.append(heading,grid);content.append(group);}
+    section('Student information',[['Student ID',student.student_id],['Email',student.email||'Not provided'],['Account created',srDate(student.created_at)],['Academic record updated',srDate(student.academic_updated_at)]]);
+    section('Academic assignment',[['Department',student.department],['Grade / year',student.grade_level],...(student.strand?[['Strand',student.strand]]:student.program?[['Program',student.program]]:[['Strand / program','Not assigned']])]);
+    const pds=srNode('section','sr-record-pds');pds.append(srNode('h3','','Personal data sheet'));const p=student.pds;pds.append(srNode('p','',p?'PDS available'+(p.school_year?' · School year '+p.school_year:'')+' · Updated '+srDate(p.updated_at):'No personal data sheet has been submitted yet.'));
+    if(student.can_view_pds&&p){const open=srNode('button','sr-open-pds','View personal data sheet');open.type='button';open.addEventListener('click',()=>openStudentPds(p.id));pds.append(open);}content.append(pds);
+}
+async function openStudentPds(id){
+    const modal=document.getElementById('studentPdsModal'),holder=document.getElementById('srPdsContent');holder.replaceChildren(srNode('p','sr-loading','Loading personal data sheet…'));window.PortalDialogs.close(document.getElementById('studentRecordModal'));window.PortalDialogs.open(modal);
+    try{const response=await fetch('pages/admin/admin_view_pds.php?id='+encodeURIComponent(id),{headers:{'X-Requested-With':'XMLHttpRequest'}});if(!response.ok)throw new Error('Unavailable');const html=await response.text();if(!modal.isConnected||modal.classList.contains('hidden'))return;holder.innerHTML=html;await window.PDSPaper.mount(holder.querySelector('[data-pds-document]'),modal);}catch(error){holder.replaceChildren(srNode('p','sr-loading','The personal data sheet could not be opened. Please try again.'));}
+}
+function closeStudentPds(){const modal=document.getElementById('studentPdsModal');window.PDSPaper?.dispose(modal.querySelector('[data-pds-document]'));window.PortalDialogs.close(modal);if(currentViewedStudent)window.PortalDialogs.open(document.getElementById('studentRecordModal'));}
+document.getElementById('studentsBody').addEventListener('click',event=>{const view=event.target.closest('[data-view-student]'),assign=event.target.closest('[data-assign-student]');if(view)viewStudentRecord(view.dataset.viewStudent);else if(assign)assignStudentAcademics(assign.dataset.assignStudent);});
+document.getElementById('srRecordAssign').addEventListener('click',()=>{if(currentViewedStudent)assignStudentAcademics(currentViewedStudent.id);});

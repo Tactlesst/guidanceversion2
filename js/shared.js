@@ -1,6 +1,6 @@
 // Shared UI utilities — loaded by layout.php
-function openModal(id) { document.getElementById(id)?.classList.remove('hidden'); }
-function closeModal(id) { document.getElementById(id)?.classList.add('hidden'); }
+function openModal(id) { const modal=document.getElementById(id);if(modal?.hasAttribute('data-portal-dialog')&&window.PortalDialogs)window.PortalDialogs.open(modal);else modal?.classList.remove('hidden'); }
+function closeModal(id) { const modal=document.getElementById(id);if(modal?.hasAttribute('data-portal-dialog')&&window.PortalDialogs)window.PortalDialogs.close(modal);else modal?.classList.add('hidden'); }
 
 function switchTab(tab, tabs, options) {
     options = options || {};
@@ -29,3 +29,5 @@ document.addEventListener('click', function(e) {
         e.target.classList.add('hidden');
     }
 });
+
+function officeAlert(...args){return window.PortalDialogs?window.PortalDialogs.fire(...args):Swal.fire(...args);}

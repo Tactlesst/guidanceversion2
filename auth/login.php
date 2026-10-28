@@ -61,7 +61,7 @@ if ($_POST && $can_attempt) {
             'grade_level_applying' => $ud['grade_level_applying'],
             'login_attempts' => 0, 'HTTP_USER_AGENT' => $_SERVER['HTTP_USER_AGENT'] ?? '',
             'login_success' => true, 'welcome_name' => $ud['first_name'],
-            'user_role_display' => ucfirst($ud['role'])
+            'user_role_display' => ucwords(str_replace('_', ' ', $ud['role']))
         ]);
         $logger->login($ud['id'], ['email' => $ud['email'], 'role' => $ud['role'], 'login_method' => 'web']);
         
@@ -121,13 +121,14 @@ list($attempts, $remaining_attempts, $lockout_time, $can_attempt) = getLockout()
             }
         }
     </script>
+    <link rel="stylesheet" href="../assets/css/auth-dialogs.css?v=20261027-1">
 </head>
-<body class="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-50 p-5 relative">
+<body class="auth-page min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-50 p-5 relative">
     <!-- Background decoration -->
     <div class="fixed inset-0 pointer-events-none" style="background: radial-gradient(circle at 20% 80%, rgba(120,119,198,0.3) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(255,255,255,0.1) 0%, transparent 50%)"></div>
 
     <div class="w-full max-w-md relative z-10">
-        <div class="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-10 border border-white/20 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden">
+        <div class="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-10 border border-white/20 transition-shadow duration-300 relative overflow-hidden">
             <!-- Decorative circles -->
             <div class="absolute -top-12 -right-12 w-48 h-48 bg-gradient-to-br from-primary to-secondary rounded-full opacity-[0.08] animate-pulse"></div>
             <div class="absolute -bottom-14 -left-14 w-40 h-40 bg-gradient-to-br from-secondary to-accent rounded-full opacity-[0.06] animate-pulse"></div>
@@ -209,28 +210,55 @@ list($attempts, $remaining_attempts, $lockout_time, $can_attempt) = getLockout()
         const loginBtn = document.getElementById('loginBtn');
         const btnText = document.getElementById('loginBtnText');
 
-        // Logout success alert
+        const authDialog = Swal.mixin({
+            target: document.body,
+            position: 'center',
+            heightAuto: false,
+            scrollbarPadding: false,
+            returnFocus: false,
+            buttonsStyling: false,
+            showClass: { popup: '' },
+            hideClass: { popup: '' },
+            customClass: {
+                container: 'auth-modal-container',
+                popup: 'auth-modal',
+                confirmButton: 'auth-modal-confirm'
+            }
+        });
+        const successIcon = '<span aria-hidden="true">✓</span>';
+
+        // Remove the logout marker immediately so refreshing cannot replay the message.
         <?php if (isset($_GET['logout']) && $_GET['logout'] === 'success'): ?>
-            Swal.fire({ icon: 'success', title: 'Logged Out Successfully', confirmButtonColor: '#163269', timer: 3000, timerProgressBar: true })
-                .then(() => { history.replaceState({}, document.title, location.pathname); });
+            const cleanUrl = new URL(location.href);
+            cleanUrl.searchParams.delete('logout');
+            history.replaceState({}, document.title, cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);
+            authDialog.fire({
+                icon: 'success', iconHtml: successIcon,
+                title: 'You’re signed out',
+                text: 'Your session has ended. You can sign in again below.',
+                confirmButtonText: 'Back to sign in',
+                timer: 3000, timerProgressBar: true
+            }).then(() => document.getElementById('identifier').focus({preventScroll:true}));
         <?php endif; ?>
 
-        // Login success alert
         <?php if (isset($show_success)): ?>
-            <?php $wn = htmlspecialchars($_SESSION['welcome_name'] ?? 'User'); $ur = htmlspecialchars($_SESSION['user_role_display'] ?? 'User'); unset($_SESSION['login_success'], $_SESSION['welcome_name'], $_SESSION['user_role_display']); ?>
-            setTimeout(() => {
-                Swal.fire({
-                    icon: 'success', title: 'Welcome Back!',
-                    html: `<div style="text-align:center;margin:15px 0"><h4 style="color:#163269;margin-bottom:10px;font-weight:600">Hello, <?= $wn ?>!</h4><p style="color:#718096;font-size:15px;margin:0">Logged in as <?= $ur ?></p><p style="color:#4ade80;font-size:13px;margin-top:8px;font-weight:500">Redirecting to dashboard...</p></div>`,
-                    showConfirmButton: true, confirmButtonText: 'Continue to Dashboard', confirmButtonColor: '#163269',
-                    timer: 3000, timerProgressBar: true,
-                    willClose: () => { location.href = '<?= $redirect_url ?>'; }
-                }).then((result) => {
-                    if (result.isConfirmed || result.dismiss === Swal.DismissReason.timer) {
-                        location.href = '<?= $redirect_url ?>';
-                    }
-                });
-            }, 300);
+            <?php
+            $welcome_text = 'Hello, ' . ($_SESSION['welcome_name'] ?? 'User') . '. You’re signed in as ' . ($_SESSION['user_role_display'] ?? 'User') . '.';
+            unset($_SESSION['login_success'], $_SESSION['welcome_name'], $_SESSION['user_role_display']);
+            ?>
+            form.setAttribute('aria-busy', 'true');
+            loginBtn.disabled = true;
+            authDialog.fire({
+                icon: 'success', iconHtml: successIcon,
+                title: 'Welcome back',
+                text: <?= json_encode($welcome_text, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+                confirmButtonText: 'Continue to dashboard',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                timer: 3000, timerProgressBar: true
+            }).then(() => {
+                window.location.replace(<?= json_encode($redirect_url) ?>);
+            });
             return;
         <?php endif; ?>
 
@@ -260,7 +288,7 @@ list($attempts, $remaining_attempts, $lockout_time, $can_attempt) = getLockout()
             if (!document.getElementById('identifier').value.trim() || !document.getElementById('password').value.trim()) { e.preventDefault(); alert('Please fill in all fields'); return; }
             loginBtn.disabled = true;
             btnText.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Logging in...';
-            Swal.fire({ title: 'Authenticating...', html: 'Please wait while we verify your credentials', allowEscapeKey: false, allowOutsideClick: false, showConfirmButton: false, didOpen: () => Swal.showLoading() });
+            form.setAttribute('aria-busy', 'true');
         });
     });
     </script>
