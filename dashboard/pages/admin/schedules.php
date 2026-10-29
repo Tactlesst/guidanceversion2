@@ -1,10 +1,10 @@
 <?php
 if(!defined('IN_LAYOUT')){http_response_code(403);exit;}
-require_once __DIR__ . '/../../../classes/Schedule.php';
-require_once __DIR__ . '/../../../classes/Holiday.php';
-require_once __DIR__ . '/../../../classes/DailyBookingLimit.php';
+require_once __DIR__.'/../../../classes/scheduling/Schedule.php';
+require_once __DIR__.'/../../../classes/scheduling/Holiday.php';
+require_once __DIR__.'/../../../classes/scheduling/DailyBookingLimit.php';
 
-require_once __DIR__.'/../../../classes/SchoolClosure.php';
+require_once __DIR__.'/../../../classes/scheduling/SchoolClosure.php';
 $schoolClosure=new SchoolClosure($db);
 $_SESSION['school_closure_token']=$_SESSION['school_closure_token']??bin2hex(random_bytes(32));
 $schedule = new Schedule($db);
@@ -15,8 +15,8 @@ $msgs = fetchSessionMessages();
 $success_message = $msgs['success'];
 $error_message = $msgs['error'];
 
-require_once __DIR__.'/../../../includes/schedule_planning_rules.php';
-require_once __DIR__.'/../../../includes/schedule_booking_overview.php';
+require_once __DIR__.'/../../../includes/scheduling/planning_rules.php';
+require_once __DIR__.'/../../../includes/scheduling/booking_overview.php';
 $minimum_schedule_date=(new DateTimeImmutable('tomorrow',new DateTimeZone('Asia/Manila')))->format('Y-m-d');
 if(isset($_POST['create_schedule'])||isset($_POST['update_schedule'])){
     $planning_error=validateScheduleWrite($_POST,$db);
@@ -30,7 +30,7 @@ if ($_POST) {
         $schedule->start_datetime=$_POST['start_date'].' '.($_POST['start_time']??'08:00');
         $schedule->end_datetime=$_POST['end_date'].' '.($_POST['end_time']??'17:00');
         $schedule->event_type=$_POST['event_type']??'event'; $schedule->created_by=$_SESSION['user_id']; $schedule->is_active=1;
-        if($schedule->create()){if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message']="Schedule created!";header('Location: '.portalSaveRedirect('layout.php?page=schedules'));exit();}
+        if($schedule->create()){if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message']=$schedule->event_type==='entrance_exam'?'Exam schedule created. Set its entrance exam daily limit to open examinee booking.':'Schedule created!';header('Location: '.portalSaveRedirect('layout.php?page=schedules'));exit();}
     }
     if (isset($_POST['update_schedule'])) {
         $schedule->id=$_POST['schedule_id']; $schedule->title=$_POST['title']; $schedule->description=$_POST['description']??'';
@@ -605,7 +605,7 @@ function updateCreateModalColor(eventType){
     const options={
         event:{label:'Create event',hint:'School activities and general events',icon:'fa-calendar',placeholder:'e.g. Grade 11 guidance orientation'},
         pds_period:{label:'Create PDS period',hint:'Personal Data Sheet submission dates',icon:'fa-file-alt',placeholder:'e.g. First semester PDS submission'},
-        entrance_exam:{label:'Schedule entrance exam',hint:'Entrance examination schedules',icon:'fa-clipboard-list',placeholder:'e.g. Incoming college entrance exam'},
+        entrance_exam:{label:'Schedule entrance exam',hint:'Examinees see the scheduled session. No attendee limit by default; a daily limit is optional.',icon:'fa-clipboard-list',placeholder:'e.g. Incoming college entrance exam'},
         counseling:{label:'Set counselor availability',hint:'Available counseling time blocks',icon:'fa-user-clock',placeholder:'e.g. Morning counseling availability'}
     };
     const type=Object.hasOwn(options,eventType)?eventType:'event',option=options[type],modal=document.getElementById('createScheduleModal');
@@ -675,7 +675,7 @@ function updateViewModalColor(eventType){
 }
 function refreshEditScheduleType(){
     const type=document.getElementById('edit_event_type').value;
-    const types={event:{icon:'fa-calendar',hint:'School activities and general events'},pds_period:{icon:'fa-file-lines',hint:'Personal Data Sheet submission dates'},entrance_exam:{icon:'fa-clipboard-list',hint:'Entrance examination schedules'},counseling:{icon:'fa-comments',hint:'Available counseling time blocks'}};
+    const types={event:{icon:'fa-calendar',hint:'School activities and general events'},pds_period:{icon:'fa-file-lines',hint:'Personal Data Sheet submission dates'},entrance_exam:{icon:'fa-clipboard-list',hint:'Examinees see the scheduled session. No attendee limit by default; a daily limit is optional.'},counseling:{icon:'fa-comments',hint:'Available counseling time blocks'}};
     const option=types[type]||types.event;document.getElementById('editScheduleModal').dataset.eventType=type;
     document.getElementById('edit_type_hint').textContent=option.hint;document.getElementById('edit_type_icon').className='fas '+option.icon;
 }

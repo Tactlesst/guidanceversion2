@@ -1,0 +1,9 @@
+# Private environment settings/data; previously tracked history needs separate review
+/config/*.local.php
+/storage/uploads/*
+!/storage/uploads/.htaccess
+/storage/backups/*
+!/storage/backups/.htaccess
+/tools/qa/results/
+*.log
+*.tmp

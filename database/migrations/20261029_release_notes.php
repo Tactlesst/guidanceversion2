@@ -1,0 +1,3 @@
+<?php
+if(PHP_SAPI!=='cli'){http_response_code(403);exit;}
+require __DIR__.'/../../config/database.php';$db=(new Database)->getConnection();$db->exec("CREATE TABLE IF NOT EXISTS release_notes(id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,version VARCHAR(30) NOT NULL,release_date DATE NOT NULL,title VARCHAR(150) NOT NULL,items_json LONGTEXT NOT NULL,created_by INT NOT NULL,created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE KEY release_version(version)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");echo "Public patch-note storage is ready. Existing releases are preserved.\n";

@@ -3,7 +3,12 @@
     'use strict';
     const main = document.getElementById('mainContent');
     if (!main || window.PortalNavigation) return;
-    const nativeFetch = window.fetch.bind(window);
+    const browserFetch=window.fetch.bind(window);
+    const nativeFetch=(input,options={})=>{
+        const target=new URL(input instanceof Request?input.url:String(input),location.href),method=String(options.method||(input instanceof Request?input.method:'GET')).toUpperCase();
+        if(method==='POST'&&target.origin===location.origin&&target.pathname===new URL('layout.php',location.href).pathname){const headers=new Headers(options.headers||(input instanceof Request?input.headers:undefined));headers.set('X-Portal-CSRF',document.querySelector('meta[name="portal-csrf"]')?.content||'');return browserFetch(input,{...options,headers});}
+        return browserFetch(input,options);
+    };
     const originalAdd = EventTarget.prototype.addEventListener;
     const originalRemove = EventTarget.prototype.removeEventListener;
     const sharedGlobals = new Set(['tailwind', 'Swal', 'Chart', 'bootstrap']);
@@ -313,6 +318,7 @@
         const action=new URL(submitter?.getAttribute('formaction')||form.getAttribute('action')||location.href,location.href);
         if(!isRoute(action.href))throw new Error('This form cannot be saved here.');
         const body=new FormData(form);
+        body.set('_portal_csrf',document.querySelector('meta[name="portal-csrf"]')?.content||'');
         if(submitter?.name)body.append(submitter.name,submitter.value);
         const returnURL=new URL(location.href);returnURL.searchParams.delete('success');
         body.set('_portal_return','layout.php'+returnURL.search);

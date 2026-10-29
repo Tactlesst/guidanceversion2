@@ -3,24 +3,26 @@ $in_layout = defined('IN_LAYOUT');
 
 if (!$in_layout) {
     require_once '../config/database.php';
-    require_once '../includes/session.php';
-    require_once '../classes/CounselingAppointment.php';
-    require_once '../classes/SystemSettings.php';
-    require_once '../classes/Notification.php';
-    require_once '../classes/User.php';
+    require_once '../includes/core/session.php';
+    require_once '../classes/counseling/CounselingAppointment.php';
+    require_once '../classes/system/SystemSettings.php';
+    require_once '../classes/notifications/Notification.php';
+    require_once '../classes/identity/User.php';
     checkLogin();
     checkRole(['student']);
     
     $database = new Database();
     $db = $database->getConnection();
 } else {
-    require_once __DIR__ . '/../classes/CounselingAppointment.php';
-    require_once __DIR__ . '/../classes/SystemSettings.php';
-    require_once __DIR__ . '/../classes/Notification.php';
-    require_once __DIR__ . '/../classes/User.php';
+    require_once __DIR__.'/../classes/counseling/CounselingAppointment.php';
+    require_once __DIR__.'/../classes/system/SystemSettings.php';
+    require_once __DIR__.'/../classes/notifications/Notification.php';
+    require_once __DIR__.'/../classes/identity/User.php';
     // $db is already available from layout.php
 }
 
+$_SESSION['booking_csrf']=$_SESSION['booking_csrf']??bin2hex(random_bytes(24));
+if(($_SERVER['REQUEST_METHOD']??'GET')==='POST'&&(!is_string($_POST['_booking_csrf']??null)||!hash_equals($_SESSION['booking_csrf'],$_POST['_booking_csrf']))){http_response_code(403);echo '<p>Refresh the booking page before submitting an appointment.</p>';return;}
 // Check system settings
 $settings = new SystemSettings($db);
 if(!$settings->isCounselingEnabled()) {
@@ -159,23 +161,9 @@ try{$daily_capacity=(new DailyBookingLimit($db))->getCapacityForRange(date('Y-m-
 
 $school_closure_dates=(new SchoolClosure($db))->calendar(date('Y-m-01',strtotime($start_date)),$end_date);
 
-// Build lookup: dates that have holiday
-$holiday_dates = [];
-try {
-    $start_date = "$year-$month-01";
-    $end_date = date('Y-m-t', strtotime($start_date));
-    try {
-        $stmt = $db->prepare("SELECT date FROM holidays WHERE date BETWEEN ? AND ?");
-        $stmt->execute([$start_date, $end_date]);
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) { $holiday_dates[] = $row['date']; }
-    } catch (Exception $e) {
-        try {
-            $stmt = $db->prepare("SELECT holiday_date FROM holidays WHERE holiday_date BETWEEN ? AND ?");
-            $stmt->execute([$start_date, $end_date]);
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) { $holiday_dates[] = $row['holiday_date']; }
-        } catch (Exception $e2) {}
-    }
-} catch (Exception $e) {}
+require_once __DIR__.'/../classes/scheduling/Holiday.php';
+$calendarHolidays=(new Holiday($db))->getCalendarHolidays((int)$month,(int)$year);
+$holiday_dates=array_column($calendarHolidays,'date');
 
 // Mark every day of a holiday range closed, matching server-side booking validation.
 $holidayRanges=$db->prepare("SELECT DATE(start_datetime) AS start_date, DATE(end_datetime) AS end_date FROM schedules WHERE event_type='holiday' AND is_active=1 AND DATE(start_datetime)<=? AND DATE(end_datetime)>=?");
@@ -239,22 +227,8 @@ try {
         } catch (Exception $e2) {}
     }
     
-    // Holidays - try both column names
-    try {
-        $stmt = $db->prepare("SELECT date as holiday_date, name as holiday_name FROM holidays WHERE date BETWEEN ? AND ?");
-        $stmt->execute([$start_date, $end_date]);
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $calendar_events[$row['holiday_date']][] = ['event_name' => $row['holiday_name'], 'event_type' => 'holiday'];
-        }
-    } catch (Exception $e) {
-        try {
-            $stmt = $db->prepare("SELECT holiday_date, holiday_name FROM holidays WHERE holiday_date BETWEEN ? AND ?");
-            $stmt->execute([$start_date, $end_date]);
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                $calendar_events[$row['holiday_date']][] = ['event_name' => $row['holiday_name'], 'event_type' => 'holiday'];
-            }
-        } catch (Exception $e2) {}
-    }
+    foreach($calendarHolidays as $holiday){$calendar_events[$holiday['date']][]=['event_name'=>$holiday['name'],'event_type'=>'holiday'];}
+
 } catch (Exception $e) {}
 
 // Calendar generation
@@ -273,4 +247,4 @@ if ($next_month > 12) { $next_month = 1; $next_year++; }
 $dashboard_url = $in_layout ? 'layout.php?page=dashboard' : '../dashboard/index.php';
 $book_url = $in_layout ? 'layout.php?page=book_appointment' : 'book_appointment.php';
 
-require __DIR__.'/../includes/student_booking_view.php';
+require __DIR__.'/../includes/counseling/booking_view.php';

@@ -18,6 +18,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $type = $_POST['type'] ?? '';
     
     try {
+        if(!is_string($action)||!in_array($action,['add','edit','toggle_status'],true))throw new InvalidArgumentException('Choose a valid academic action.');
+        if(in_array($action,['add','edit'],true)){
+            if(!is_string($type)||!in_array($type,['department','program','strand','grade'],true))throw new InvalidArgumentException('Choose a valid academic category.');
+            $recordName=$_POST['name']??null;$recordDescription=$_POST['description']??'';
+            if(!is_string($recordName)||trim($recordName)===''||mb_strlen($recordName)>100||!is_string($recordDescription)||mb_strlen($recordDescription)>2000)throw new InvalidArgumentException('Enter a name up to 100 characters and a description up to 2,000 characters.');
+            if($type!=='department'){$parent=filter_var($_POST['department_id']??null,FILTER_VALIDATE_INT);$q=$db->prepare('SELECT id FROM academic_departments WHERE id=?');$q->execute([$parent]);if(!$parent||!$q->fetchColumn())throw new InvalidArgumentException('Choose an existing department.');}
+        }
+        if($action!=='add'&&!filter_var($_POST['id']??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]))throw new InvalidArgumentException('Choose an existing academic record.');
+        if($action==='toggle_status'&&(!in_array($_POST['table']??null,['academic_departments','academic_programs','academic_strands','academic_grade_levels'],true)||!in_array($_POST['status']??null,['0','1',0,1],true)))throw new InvalidArgumentException('Choose a valid record and status.');
         switch ($action) {
             case 'add':
                 $name = trim($_POST['name']);
@@ -126,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
         }
     } catch (Exception $e) {
-        $error_message = "Error: " . $e->getMessage();
+        $error_message = $e instanceof PDOException?'The academic record could not be saved. Check for a duplicate record or invalid department.':$e->getMessage();
     }
 }
 
@@ -231,4 +240,4 @@ $field_configs = [
     </form></div>
 </div><?php endforeach;?>
 <script>const academicSettingsPayload = <?=json_encode($academic_data, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE)?>;</script>
-<script src="js/academic_settings.js?v=20261027-5" defer></script>
+<script src="../assets/js/academic-settings.js?v=20261027-5" defer></script>

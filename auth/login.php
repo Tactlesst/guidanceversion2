@@ -1,10 +1,10 @@
 <?php
 require_once '../config/database.php';
-require_once '../classes/User.php';
-require_once '../classes/SystemLogger.php';
-require_once '../includes/session.php';
+require_once '../classes/identity/User.php';require_once '../classes/identity/LoginThrottle.php';
+require_once '../classes/system/SystemLogger.php';
+require_once '../includes/core/session.php';
 
-require_once '../classes/MailLink.php';
+require_once '../classes/notifications/MailLink.php';
 if (isset($_GET['mail'])) $_SESSION['mail_topic'] = MailLink::topic($_GET['mail']);
 if (isLoggedIn()) { header('Location: ' . MailLink::consume($_SESSION, (string)($_SESSION['role'] ?? ''))); exit(); }
 
@@ -23,12 +23,15 @@ function getLockout() {
 }
 
 list($attempts, $remaining_attempts, $lockout_time, $can_attempt) = getLockout();
-$auth_notice=$_SESSION['auth_notice']??'';unset($_SESSION['auth_notice']);
+$auth_notice=$_SESSION['auth_notice']??(isset($_GET['expired'])?'Your session expired. Please sign in again.':'');unset($_SESSION['auth_notice']);
 $error_message = $_SESSION['login_error'] ?? '';
 if (isset($_SESSION['login_error'])) unset($_SESSION['login_error']);
 
+$_SESSION['login_csrf']=$_SESSION['login_csrf']??bin2hex(random_bytes(32));
+$loginCsrfValid=$_SERVER['REQUEST_METHOD']!=='POST'||(is_string($_POST['_login_csrf']??null)&&hash_equals($_SESSION['login_csrf'],$_POST['_login_csrf']));
+if(!$loginCsrfValid){http_response_code(403);$error_message='Refresh the sign-in page before trying again.';}
 // --- Handle POST ---
-if ($_POST && $can_attempt) {
+if ($_POST && $can_attempt && $loginCsrfValid) {
     try {
         $db = (new Database())->getConnection();
         if (!$db) throw new Exception("DB connection failed");
@@ -40,9 +43,11 @@ if ($_POST && $can_attempt) {
     }
 
     $identifier = is_string($_POST['identifier']??null)?trim($_POST['identifier']):'';
-    $password = $_POST['password'] ?? '';
+    $password = is_string($_POST['password']??null)?$_POST['password']:'';
 
+    try{$loginThrottle=new LoginThrottle($db);$loginReservation=$loginThrottle->reserve($identifier,$_SERVER['REMOTE_ADDR']??'0.0.0.0');}catch(Throwable $e){$_SESSION['login_error']=$e instanceof PDOException?'Sign-in is temporarily unavailable. Please try again.':$e->getMessage();header('Location: login.php?error=1');exit;}
     if ($user->login($identifier, $password)) {
+        $loginThrottle->success($loginReservation);
         // Fetch full user data
         $stmt = $db->prepare("SELECT u.id, u.email, u.auth_version, u.role, u.first_name, u.last_name, u.position, u.grade_level_applying, sp.student_id, sp.grade_level
                               FROM users u LEFT JOIN student_profiles sp ON u.id = sp.user_id
@@ -77,23 +82,9 @@ if ($_POST && $can_attempt) {
         $_SESSION['last_attempt_time'] = time();
         $rem = max(0, $MAX_ATTEMPTS - $_SESSION['login_attempts']);
 
-        try {
-            // Check if account exists but is archived/inactive
-            $chk = $db->prepare("SELECT u.is_active, u.archived FROM users u LEFT JOIN student_profiles sp ON u.id = sp.user_id WHERE (LOWER(TRIM(u.email)) = LOWER(?) OR sp.student_id = ?)");
-            $chk->execute([$identifier, $identifier]);
-            if ($chk->rowCount() > 0) {
-                $s = $chk->fetch(PDO::FETCH_ASSOC);
-                $error_message = ($s['archived'] ?? 0) == 1 ? "Account archived. Contact admin." :
-                                ($s['is_active'] == 0 ? "Account inactive. Contact admin." :
-                                ($rem > 0 ? "Invalid password. {$rem} attempt(s) remaining." : "Too many attempts. Wait {$LOCKOUT_SEC}s."));
-            } else {
-                $error_message = $rem > 0 ? "Account not found. {$rem} attempt(s) remaining." : "Too many attempts. Wait {$LOCKOUT_SEC}s.";
-            }
-        } catch (Exception $e) {
-            $error_message = $rem > 0 ? "Invalid credentials. {$rem} attempt(s) remaining." : "Too many attempts. Wait {$LOCKOUT_SEC}s.";
-        }
+        $error_message=$rem>0?"Sign-in details are incorrect. {$rem} attempt(s) remaining.":"Too many attempts. Wait {$LOCKOUT_SEC}s.";
         $_SESSION['login_error'] = $error_message;
-        $logger->warning("Failed login for: {$identifier}", null, ['identifier' => $identifier, 'attempt' => $_SESSION['login_attempts']]);
+        $logger->warning("Failed sign-in attempt",null,['attempt'=>$_SESSION['login_attempts']]);
         header("Location: login.php?error=1"); exit();
     }
 } elseif ($_POST && !$can_attempt) {
@@ -161,7 +152,7 @@ list($attempts, $remaining_attempts, $lockout_time, $can_attempt) = getLockout()
             <?php endif; ?>
 
             <!-- Login form -->
-            <form method="POST" id="loginForm" <?= $lockout_time > 0 ? 'data-locked="true"' : '' ?> data-lockout="<?= $lockout_time ?>">
+            <form method="POST" id="loginForm" <?= $lockout_time > 0 ? 'data-locked="true"' : '' ?> data-lockout="<?= $lockout_time ?>"><input type="hidden" name="_login_csrf" value="<?=htmlspecialchars($_SESSION['login_csrf'],ENT_QUOTES)?>">
                 <div class="mb-4 relative">
                     <input type="text" id="identifier" name="identifier" placeholder=" " required maxlength="100" minlength="3"
                            class="peer w-full h-[52px] rounded-xl border-2 border-gray-200 pt-5 pb-2 px-4 text-sm bg-white/80 backdrop-blur-sm focus:border-primary focus:shadow-[0_0_0_4px_rgba(74,107,223,0.1)] focus:-translate-y-0.5 transition-all outline-none">

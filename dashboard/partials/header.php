@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__.'/../../classes/NotificationInbox.php';
+require_once __DIR__.'/../../classes/notifications/NotificationInbox.php';
 $_SESSION['notification_csrf']=$_SESSION['notification_csrf']??bin2hex(random_bytes(32));$header_notifications=[];$unread_count=0;
 try{$headerInbox=new NotificationInbox($db);$headerFeed=$headerInbox->feed((int)$user_info['id']);$header_notifications=$headerFeed['preview'];$unread_count=$headerFeed['unread_count'];}catch(Throwable $e){}
 ?>

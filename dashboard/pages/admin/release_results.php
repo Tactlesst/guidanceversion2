@@ -1,7 +1,7 @@
 <?php
 if (!defined('IN_LAYOUT')) exit;
 checkRole(['admin','guidance_advocate']);
-require_once __DIR__.'/../../../classes/EntranceExamResults.php';
+require_once __DIR__.'/../../../classes/examinations/EntranceExamResults.php';
 $id=(int)($_GET['id']??0);$q=$db->prepare('SELECT e.*,u.first_name,u.last_name FROM entrance_exam_appointments e JOIN users u ON u.id=e.user_id WHERE e.id=?');$q->execute([$id]);$exam=$q->fetch(PDO::FETCH_ASSOC);
 if(!$exam || !in_array($exam['status'],['awaiting_results','completed'],true)) { echo '<p>No exam awaiting results found.</p>';return; }
 $fields=['exam_date','olsat_level','olsat_form','verbal_abilities_score','verbal_comprehension_score','verbal_reasoning_score','nonverbal_abilities_score','figural_reasoning_score','quantitative_reasoning_score','total_score','total_items','stanine_score','interpretation','verbal_stanine','verbal_interpretation','nonverbal_stanine','nonverbal_interpretation','qualified_grade','academic_strand','qualified_program','school_year','testing_in_charge'];
@@ -24,8 +24,8 @@ if($_SERVER['REQUEST_METHOD']==='POST') {
   $db->beginTransaction();$q=$db->prepare('SELECT status FROM entrance_exam_appointments WHERE id=? FOR UPDATE');$q->execute([$id]);
   if(!in_array($q->fetchColumn(),['awaiting_results','completed']))throw new RuntimeException('The appointment status changed. Reload before releasing results.');
   $result->saveResults();
-  require_once __DIR__.'/../../../classes/NotificationService.php';
-  if(!(new NotificationService($db))->notify((int)$exam['user_id'],'Entrance exam results released','Your results are now available in the examinee portal. Sign in to review them.','info','entrance_exam_appointments',$id,true,null,null,'exam-results:'.$id.':'.bin2hex(random_bytes(12))))throw new RuntimeException('The results notification could not be saved.');
+  require_once __DIR__.'/../../../classes/notifications/SubmissionNotifications.php';
+  SubmissionNotifications::examResults($db,$id);
   $db->commit();if(function_exists('staffActivitySaved'))staffActivitySaved();$_SESSION['success_message']='Exam results have been saved and released.';header('Location: ' . portalSaveRedirect('layout.php?page=manage_exams'));exit;
  }catch(Throwable $e){if($db->inTransaction())$db->rollBack();$error=$e->getMessage();}
 }

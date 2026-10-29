@@ -1,0 +1,93 @@
+<?php
+if (session_status() == PHP_SESSION_NONE) {
+    ini_set('session.cookie_httponly', 1);
+    ini_set('session.use_strict_mode', 1);
+    if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
+        ini_set('session.cookie_secure', 1);
+    }
+    $sessionApp = require __DIR__.'/../../config/app.php';
+    $sessionBasePath = rtrim((string)(parse_url($sessionApp['base_url'], PHP_URL_PATH) ?? ''), '/') . '/';
+    session_set_cookie_params([
+        'lifetime' => 0, 'path' => $sessionBasePath, 'domain' => '',
+        'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
+        'httponly' => true, 'samesite' => 'Strict'
+    ]);
+    session_name('GUIDANCEV2SESSID');
+    session_start();
+
+    // 30 min inactivity timeout
+    if (isset($_SESSION['LAST_ACTIVITY']) && (time() - $_SESSION['LAST_ACTIVITY'] > 1800)) {
+        session_unset(); session_destroy(); session_start();
+    }
+    $passivePoll=($_SERVER['REQUEST_METHOD']??'GET')==='GET'&&in_array(basename($_SERVER['SCRIPT_NAME']??''),['approval_status.php','approval_feed.php','notifications.php'],true);
+    if(!$passivePoll||!isset($_SESSION['LAST_ACTIVITY']))$_SESSION['LAST_ACTIVITY']=time();
+
+    // Session hijacking prevention
+    if (isset($_SESSION['user_id'])) {
+        if (!isset($_SESSION['HTTP_USER_AGENT'])) {
+            $_SESSION['HTTP_USER_AGENT'] = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        } elseif ($_SESSION['HTTP_USER_AGENT'] !== ($_SERVER['HTTP_USER_AGENT'] ?? '')) {
+            // User-Agent can change when switching device emulation (mobile/desktop) in the browser.
+            // Instead of destroying the session, refresh the stored UA to avoid logging out.
+            $_SESSION['HTTP_USER_AGENT'] = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        }
+
+        // Optional additional signal: bind session to IP (best-effort; may change on some networks)
+        if (!isset($_SESSION['IP_ADDRESS'])) {
+            $_SESSION['IP_ADDRESS'] = $_SERVER['REMOTE_ADDR'] ?? '';
+        } elseif (($_SESSION['IP_ADDRESS'] ?? '') !== ($_SERVER['REMOTE_ADDR'] ?? '')) {
+            // If IP changes, keep the session but update the stored value.
+            // (Hard logout here can be disruptive on networks with changing IPs.)
+            $_SESSION['IP_ADDRESS'] = $_SERVER['REMOTE_ADDR'] ?? '';
+        }
+    }
+}
+
+// A completed password reset, email change or account conversion invalidates old sessions.
+if(isset($_SESSION['user_id'])){
+    try{
+        require_once __DIR__.'/../../config/database.php';$sessionDb=(new Database)->getConnection();
+        $sessionCheck=$sessionDb->prepare('SELECT auth_version,role,is_active,archived,email FROM users WHERE id=?');$sessionCheck->execute([$_SESSION['user_id']]);$sessionAccount=$sessionCheck->fetch(PDO::FETCH_ASSOC);
+        $sessionVersion=(int)($_SESSION['auth_version']??0);
+        if(!$sessionAccount||!(int)$sessionAccount['is_active']||(int)$sessionAccount['archived']||$sessionVersion!==(int)$sessionAccount['auth_version']){
+            $_SESSION=[];session_regenerate_id(true);$_SESSION['auth_notice']='Your account security changed. Please sign in again.';
+        }else{$_SESSION['auth_version']=(int)$sessionAccount['auth_version'];$_SESSION['role']=$sessionAccount['role'];$_SESSION['user_role']=$sessionAccount['role'];$_SESSION['user_email']=$sessionAccount['email'];}
+    }catch(Throwable $e){unset($_SESSION['user_id']);$_SESSION['auth_notice']='Account verification is temporarily unavailable. Please sign in again.';}
+}
+
+function checkLogin() {
+    if (!isset($_SESSION['user_id'])) {
+        if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Session expired. Please login again.']);
+            exit();
+        }
+        header("Location: ../auth/login.php"); exit();
+    }
+}
+
+function checkRole($required_roles) {
+    if (!isset($_SESSION['role'])) { header("Location: ../auth/login.php"); exit(); }
+    if (!is_array($required_roles)) $required_roles = [$required_roles];
+    if ($_SESSION['role'] == 'super_admin') return true;
+    if (!in_array($_SESSION['role'], $required_roles)) {
+        header("Location: ../unauthorized.php"); exit();
+    }
+}
+
+function getUserInfo() {
+    return [
+        'id' => $_SESSION['user_id'] ?? null, 'role' => $_SESSION['role'] ?? null,
+        'first_name' => $_SESSION['first_name'] ?? null, 'last_name' => $_SESSION['last_name'] ?? null,
+        'email' => $_SESSION['user_email'] ?? null,
+        'position' => $_SESSION['position'] ?? null, 'student_id' => $_SESSION['student_id'] ?? null,
+        'grade_level_applying' => $_SESSION['grade_level_applying'] ?? null
+    ];
+}
+
+function isLoggedIn() { return isset($_SESSION['user_id']); }
+
+function logout() {
+    try {if(isset($_SESSION['user_id'])){require_once __DIR__.'/../../config/database.php';require_once __DIR__.'/../../classes/system/SystemLogger.php';$logoutDb=(new Database)->getConnection();$logoutActor=$logoutDb->prepare('SELECT role FROM users WHERE id=?');$logoutActor->execute([$_SESSION['user_id']]);$logoutRole=$logoutActor->fetchColumn();if(in_array($logoutRole,['admin','guidance_advocate','super_admin'],true))(new SystemLogger($logoutDb))->logout($_SESSION['user_id'],['actor_role'=>$logoutRole]);}}catch(Throwable $e){error_log('Staff sign-out audit could not be recorded.');}
+    session_destroy(); header("Location: ../auth/login.php?logout=success"); exit(); }
+?>

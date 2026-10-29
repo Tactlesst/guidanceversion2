@@ -15,7 +15,7 @@ ini_set('display_errors', 0);
 ob_start();
 
 require_once '../config/database.php';
-require_once '../includes/session.php';require_once '../includes/pds_address.php';
+require_once '../includes/core/session.php';require_once '../includes/pds/address.php';
 
 ob_clean();
 

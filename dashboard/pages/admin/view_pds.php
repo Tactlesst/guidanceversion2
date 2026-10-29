@@ -1,9 +1,9 @@
 <?php
 if(!defined('IN_LAYOUT')){http_response_code(403);exit;}
-require_once __DIR__ . '/../../../classes/PersonalDataSheet.php';
+require_once __DIR__.'/../../../classes/records/PersonalDataSheet.php';
 
 $pds = new PersonalDataSheet($db);
-require_once __DIR__ . '/../../../includes/pds_education_categories.php';
+require_once __DIR__.'/../../../includes/pds/education_categories.php';
 $pds_category_sql = pdsEducationCategorySQL();
 $pds_category_keys = ['kinder','elementary','junior_high','senior_high','college'];
 
@@ -92,7 +92,7 @@ try {
 } catch (Exception $e) {}
 ?>
 
-<div class="space-y-6">
+<div class="space-y-6"><div style="display:flex;justify-content:flex-end"><a class="pd-button" href="layout.php?page=pds_entry">Enter a paper PDS</a></div>
     <div>
         <h1 class="text-2xl font-bold text-gray-800">Personal Data Sheets</h1>
         <p class="text-sm text-gray-500">Manage and review student personal data sheets</p>

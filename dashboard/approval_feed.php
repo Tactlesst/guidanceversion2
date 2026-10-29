@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__.'/../config/database.php';require_once __DIR__.'/../includes/session.php';
-require_once __DIR__.'/../classes/ReportApproval.php';require_once __DIR__.'/../classes/ApprovalBoardRenderer.php';
+require_once __DIR__.'/../config/database.php';require_once __DIR__.'/../includes/core/session.php';
+require_once __DIR__.'/../classes/reporting/ReportApproval.php';require_once __DIR__.'/../classes/reporting/ApprovalBoardRenderer.php';
 header('Content-Type: application/json; charset=utf-8');header('Cache-Control: private, no-store');header('Vary: Cookie');header('X-Content-Type-Options: nosniff');
 try {
     if(empty($_SESSION['user_id'])){http_response_code(401);throw new RuntimeException('Please sign in again to view approvals.');}

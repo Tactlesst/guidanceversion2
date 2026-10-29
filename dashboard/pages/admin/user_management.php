@@ -1,7 +1,14 @@
 <?php
-require_once __DIR__ . '/../../../classes/User.php';
-require_once __DIR__ . '/../../../classes/StudentImport.php';
+require_once __DIR__.'/../../../classes/identity/User.php';
+require_once __DIR__.'/../../../classes/identity/StudentImport.php';
 
+$_SESSION['user_management_csrf']=$_SESSION['user_management_csrf']??bin2hex(random_bytes(24));
+$requestAction=$_GET['action']??'';
+if(in_array($requestAction,['archive','unarchive','bulk_archive','bulk_unarchive'],true)&&($_SERVER['REQUEST_METHOD']??'GET')!=='POST'){http_response_code(405);header('Content-Type: application/json');echo json_encode(['error'=>'Use the protected account controls. GET requests cannot change accounts.']);exit;}
+if(($_SERVER['REQUEST_METHOD']??'GET')==='POST'){
+ $requestPayload=$_POST;if(str_contains($_SERVER['CONTENT_TYPE']??'','application/json'))$requestPayload=json_decode(file_get_contents('php://input'),true)?:[];
+ if(!is_string($requestPayload['_users_csrf']??null)||!hash_equals($_SESSION['user_management_csrf'],$requestPayload['_users_csrf'])){http_response_code(403);header('Content-Type: application/json');echo json_encode(['error'=>'Refresh Users & accounts before submitting an action.']);exit;}
+}
 $user_obj = new User($db);
 $import_obj = new StudentImport($db);
 
@@ -13,6 +20,7 @@ $error_message = $msgs['error'];
 if ($_POST) {
     if (isset($_POST['create_user'])) {
         try {
+            $db->beginTransaction();
             $default_password = 'password123';
             $selected_examinee_id = !empty($_POST['completed_examinee_id']) ? (int)$_POST['completed_examinee_id'] : 0;
             if ($selected_examinee_id > 0) {
@@ -28,14 +36,15 @@ if ($_POST) {
                     if (!empty($_POST['student_id']) && $_POST['role'] === 'student') {
                         $sid = trim($_POST['student_id']);
                         $chk = $db->prepare("SELECT id FROM student_profiles WHERE student_id=?"); $chk->execute([$sid]);
-                        if ($chk->rowCount() > 0) $error_message = "Student ID exists. User created without profile.";
+                        if ($chk->rowCount() > 0) throw new InvalidArgumentException('Student ID already exists. No account was created.');
                         else $db->prepare("INSERT INTO student_profiles (user_id, student_id) VALUES (?,?)")->execute([$new_uid, $sid]);
                     }
                     $_SESSION['success_message'] = $_SESSION['success_message'] ?? "User created!";
                     logAdminAction('create_user', "Created user: {$_POST['first_name']} {$_POST['last_name']} ({$_POST['role']})", null, $db);
-                } else { $error_message = "Failed to create user."; }
+                } else { throw new RuntimeException('Failed to create user.'); }
             }
-        } catch (Exception $e) { $error_message = $e->getMessage(); }
+            $db->commit();
+        } catch (Throwable $e) { if($db->inTransaction())$db->rollBack();$error_message = $e instanceof PDOException?'The account could not be saved. Please check its details.':$e->getMessage(); }
         if (empty($error_message)) { header("Location: " . portalSaveRedirect("layout.php?page=user_management")); exit(); }
     }
     if (isset($_POST['edit_user'])) {
@@ -63,23 +72,38 @@ if ($_POST) {
         }
     }
     if (isset($_POST['import_csv']) && isset($_FILES['csv_file'])) {
-        $dir = __DIR__.'/../uploads/'; if (!file_exists($dir)) mkdir($dir, 0777, true);
-        $fp = $dir . time() . '_' . $_FILES['csv_file']['name'];
-        if (move_uploaded_file($_FILES['csv_file']['tmp_name'], $fp)) { $import_obj->processCSV($fp, $_SESSION['user_id']); $_SESSION['success_message'] = "CSV import completed!"; unlink($fp); }
+        $file=$_FILES['csv_file'];
+        if(($file['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_OK||($file['size']??0)>5*1024*1024||strtolower(pathinfo((string)($file['name']??''),PATHINFO_EXTENSION))!=='csv'){
+            $_SESSION['error_message']='Choose a CSV file up to 5 MB.';header('Location: '.portalSaveRedirect('layout.php?page=user_management'));exit;
+        }
+        $dir = __DIR__.'/../../../storage/uploads/'; if (!file_exists($dir)) mkdir($dir, 0700, true);
+        $fp = $dir . 'import_' . bin2hex(random_bytes(16)) . '.csv';
+        if (move_uploaded_file($_FILES['csv_file']['tmp_name'], $fp)) {
+            try{$import_obj->processCSV($fp,$_SESSION['user_id']);$summary=(int)$import_obj->successful_imports.' accounts imported; '.(int)$import_obj->failed_imports.' rows need review.';
+                if($import_obj->import_status==='failed')$_SESSION['error_message']='The CSV could not be imported. Check the import history for details.';
+                elseif((int)$import_obj->failed_imports>0)$_SESSION['error_message']=$summary.' Check the import history for details.';
+                else $_SESSION['success_message']=$summary;
+            }catch(Throwable $e){$_SESSION['error_message']='The import could not finish. Check the import history before retrying.';}
+            finally{if(is_file($fp))unlink($fp);}
+        }
         else $_SESSION['error_message'] = "Upload failed.";
         header("Location: " . portalSaveRedirect("layout.php?page=user_management")); exit();
     }
     if (isset($_POST['generate_sample'])) {
         $sf = $import_obj->generateSampleCSV();
-        if ($sf) { ob_end_clean(); header('Content-Type: application/csv'); header('Content-Disposition: attachment; filename="'.$sf.'"'); readfile(__DIR__.'/../uploads/'.$sf); unlink(__DIR__.'/../uploads/'.$sf); exit; }
+        if ($sf) { ob_end_clean(); header('Content-Type: application/csv'); header('Content-Disposition: attachment; filename="'.$sf.'"'); readfile(__DIR__.'/../../../storage/uploads/'.$sf); unlink(__DIR__.'/../../../storage/uploads/'.$sf); exit; }
     }
     if (isset($_POST['export_users'])) {
         ob_end_clean();
         $stmt = $db->prepare("SELECT u.*, sp.student_id, sp.department, sp.program, sp.strand, sp.grade_level FROM users u LEFT JOIN student_profiles sp ON u.id=sp.user_id WHERE u.archived=0 OR u.archived IS NULL ORDER BY u.created_at DESC");
-        $stmt->execute(); $fn = 'users_export_'.date('Y-m-d_His').'.csv';
+        $stmt->execute(); $exportRows=$stmt->fetchAll(PDO::FETCH_ASSOC);
+        require_once __DIR__.'/../../../classes/system/SystemLogger.php';
+        if(!(new SystemLogger($db))->adminAction('Exported account list',$_SESSION['user_id'],['format'=>'csv','matching_records'=>count($exportRows)])){http_response_code(503);echo 'The export could not be recorded. Try again.';exit;}
+        $safeCell=static function($v){return is_string($v)&&preg_match('/^[\s]*[=+@\-\t\r]/u',$v)?"'".$v:$v;};
+        $fn = 'users_export_'.date('Y-m-d_His').'.csv';
         header('Content-Type: text/csv'); header('Content-Disposition: attachment; filename="'.$fn.'"');
         $out = fopen('php://output','w'); fputcsv($out,['ID','First','Middle','Last','Email','Role','Status','StudentID','Dept','Program','Strand','Grade','Created']);
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $u) fputcsv($out,[$u['id'],$u['first_name'],$u['middle_name'],$u['last_name'],$u['email'],ucfirst(str_replace('_',' ',$u['role'])),$u['is_active']?'Active':'Inactive',$u['student_id']?:'N/A',$u['department']?:'N/A',$u['program']?:'N/A',$u['strand']?:'N/A',$u['grade_level']?:'N/A',$u['created_at']]);
+        foreach ($exportRows as $u) fputcsv($out,array_map($safeCell,[$u['id'],$u['first_name'],$u['middle_name'],$u['last_name'],$u['email'],ucfirst(str_replace('_',' ',$u['role'])),$u['is_active']?'Active':'Inactive',$u['student_id']?:'N/A',$u['department']?:'N/A',$u['program']?:'N/A',$u['strand']?:'N/A',$u['grade_level']?:'N/A',$u['created_at']]));
         fclose($out); exit;
     }
 }
@@ -96,10 +120,10 @@ if (isset($_GET['action'])) {
         switch ($_GET['action']) {
             case 'archive': 
                 try {
-                    $result = $user_obj->archiveUser($_GET['id']);
+                    $result = $user_obj->archiveUser($_POST['id']);
                     if ($result) {
-                        $u = $db->prepare("SELECT first_name, last_name FROM users WHERE id = ?"); $u->execute([$_GET['id']]); $un = $u->fetch(PDO::FETCH_ASSOC);
-                        $uname = $un ? "{$un['first_name']} {$un['last_name']}" : "ID {$_GET['id']}";
+                        $u = $db->prepare("SELECT first_name, last_name FROM users WHERE id = ?"); $u->execute([$_POST['id']]); $un = $u->fetch(PDO::FETCH_ASSOC);
+                        $uname = $un ? "{$un['first_name']} {$un['last_name']}" : "ID {$_POST['id']}";
                         logAdminAction('archive_user', "Archived: $uname", null, $db);
                     }
                     echo json_encode(['success'=>$result]);
@@ -109,10 +133,10 @@ if (isset($_GET['action'])) {
                 break;
             case 'unarchive': 
                 try {
-                    $result = $user_obj->unarchiveUser($_GET['id']);
+                    $result = $user_obj->unarchiveUser($_POST['id']);
                     if ($result) {
-                        $u = $db->prepare("SELECT first_name, last_name FROM users WHERE id = ?"); $u->execute([$_GET['id']]); $un = $u->fetch(PDO::FETCH_ASSOC);
-                        $uname = $un ? "{$un['first_name']} {$un['last_name']}" : "ID {$_GET['id']}";
+                        $u = $db->prepare("SELECT first_name, last_name FROM users WHERE id = ?"); $u->execute([$_POST['id']]); $un = $u->fetch(PDO::FETCH_ASSOC);
+                        $uname = $un ? "{$un['first_name']} {$un['last_name']}" : "ID {$_POST['id']}";
                         logAdminAction('unarchive_user', "Restored: $uname", null, $db);
                     }
                     echo json_encode(['success'=>$result]);
@@ -121,8 +145,8 @@ if (isset($_GET['action'])) {
                 }
                 break;
             case 'bulk_archive':
-                $input = json_decode(file_get_contents('php://input'), true);
-                $ids = $input['ids'] ?? [];
+                $input=$requestPayload;
+                $ids=$input['ids']??[];if(!is_array($ids)||count($ids)>500)throw new RuntimeException('Choose up to 500 valid accounts.');$ids=array_values(array_unique(array_map(static fn($id)=>filter_var($id,FILTER_VALIDATE_INT),$ids)));if(in_array(false,$ids,true)||in_array(0,$ids,true))throw new RuntimeException('Choose valid accounts.');
                 if (empty($ids)) {
                     echo json_encode(['success'=>false, 'error'=>'No users selected']);
                     break;
@@ -139,8 +163,8 @@ if (isset($_GET['action'])) {
                 echo json_encode(['success'=>true, 'archived_count'=>$success_count]);
                 break;
             case 'bulk_unarchive':
-                $input = json_decode(file_get_contents('php://input'), true);
-                $ids = $input['ids'] ?? [];
+                $input=$requestPayload;
+                $ids=$input['ids']??[];if(!is_array($ids)||count($ids)>500)throw new RuntimeException('Choose up to 500 valid accounts.');$ids=array_values(array_unique(array_map(static fn($id)=>filter_var($id,FILTER_VALIDATE_INT),$ids)));if(in_array(false,$ids,true)||in_array(0,$ids,true))throw new RuntimeException('Choose valid accounts.');
                 if (empty($ids)) {
                     echo json_encode(['success'=>false, 'error'=>'No users selected']);
                     break;
@@ -158,7 +182,7 @@ if (isset($_GET['action'])) {
                 break;
             case 'toggle_status': 
                 try {
-                    $id = (int)$_GET['id'];
+                    $id = (int)$_POST['id'];
                     error_log("Toggle status called for user ID: " . $id);
                     $result = $user_obj->toggleUserStatus($id);
                     error_log("Toggle status result: " . ($result ? 'true' : 'false'));
@@ -174,7 +198,7 @@ if (isset($_GET['action'])) {
                     echo json_encode(['success'=>false, 'error'=>$e->getMessage()]);
                 }
                 break;
-            case 'get_user': echo json_encode($user_obj->getUserById($_GET['id'])); break;
+            case 'get_user': echo json_encode($user_obj->getUserById($_POST['id'])); break;
             case 'fetch_active':
                 $pg = max(1, intval($_GET['p'] ?? 1)); $per = max(1, min(50, intval($_GET['per'] ?? 10))); $off = ($pg-1)*$per;
                 $q = trim($_GET['q'] ?? ''); $role = $_GET['role'] ?? ''; $filter = $_GET['filter'] ?? ''; $letter = $_GET['letter'] ?? ''; $status = $_GET['status'] ?? '';
@@ -234,8 +258,9 @@ $role_icons = ['super_admin'=>'fa-crown','admin'=>'fa-user-shield','guidance_adv
 
 
 
+<script type="application/json" id="userManagementSecurity"><?=json_encode(['csrf'=>$_SESSION['user_management_csrf']],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT)?></script>
 <link rel="stylesheet" href="../assets/css/user-management.css?v=20261027-2">
-<script src="js/user_management.js?v=20261029-conversion" defer></script>
+<script src="../assets/js/user-management.js?v=20261029-security2" defer></script>
 <?php
 $role_names=['student'=>'Students','examinee'=>'Examinees','guidance_advocate'=>'Guidance advocates','admin'=>'Admins / Counselors','super_admin'=>'Superadmins'];
 $role_descriptions=[''=>'Every current user role','student'=>'Enrolled student accounts','examinee'=>'Entrance exam applicants','guidance_advocate'=>'Staff who support counseling','admin'=>'Guidance office administrators','super_admin'=>'System and account administrators'];
@@ -243,7 +268,7 @@ $role_symbols=[''=>'fa-users','student'=>'fa-user-graduate','examinee'=>'fa-clip
 $role_counts=[];$total_accounts=0;foreach($user_stats as $stat){$role_counts[$stat['role']]=$stat;$total_accounts+=(int)$stat['count'];}
 ?>
 <section class="user-management" aria-labelledby="um-title">
-    <div class="um-heading"><div><p class="um-eyebrow">Account administration</p><h1 id="um-title">User management</h1><p>Manage accounts, roles, and access in one place.</p></div><div class="um-heading-actions"><a class="um-button um-secondary" href="layout.php?page=convert_examinee"><i class="fas fa-user-graduate" aria-hidden="true"></i>Enroll passed examinees</a><form method="post"><button name="export_users" value="1" class="um-button um-secondary"><i class="fas fa-arrow-up-from-bracket" aria-hidden="true"></i>Export CSV</button></form><button type="button" class="um-button um-secondary" onclick="openUserDialog('importModal')"><i class="fas fa-arrow-down-to-bracket" aria-hidden="true"></i>Import CSV</button><button type="button" class="um-button um-primary" onclick="openUserDialog('createUserModal')"><i class="fas fa-plus" aria-hidden="true"></i>Add user</button></div></div>
+    <div class="um-heading"><div><p class="um-eyebrow">Account administration</p><h1 id="um-title">User management</h1><p>Manage accounts, roles, and access in one place.</p></div><div class="um-heading-actions"><a class="um-button um-secondary" href="layout.php?page=convert_examinee"><i class="fas fa-user-graduate" aria-hidden="true"></i>Enroll passed examinees</a><form method="post"><input type="hidden" name="_users_csrf" value="<?=htmlspecialchars($_SESSION['user_management_csrf'],ENT_QUOTES)?>"><button name="export_users" value="1" class="um-button um-secondary"><i class="fas fa-arrow-up-from-bracket" aria-hidden="true"></i>Export CSV</button></form><button type="button" class="um-button um-secondary" onclick="openUserDialog('importModal')"><i class="fas fa-arrow-down-to-bracket" aria-hidden="true"></i>Import CSV</button><button type="button" class="um-button um-primary" onclick="openUserDialog('createUserModal')"><i class="fas fa-plus" aria-hidden="true"></i>Add user</button></div></div>
 <?php if($success_message||$error_message):?><script type="application/json" data-portal-feedback><?=json_encode(['success'=>$success_message,'error'=>$error_message],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_INVALID_UTF8_SUBSTITUTE)?></script><?php endif;?>
     <h2 class="um-chooser-title">Which users do you want to manage? <span>Choose a role to see its accounts.</span></h2>
     <div class="um-role-summary" aria-label="Filter accounts by role">
@@ -271,13 +296,13 @@ $role_counts=[];$total_accounts=0;foreach($user_stats as $stat){$role_counts[$st
 <!-- Create User Modal -->
 <div id="createUserModal" class="um-modal pd-overlay hidden" data-portal-dialog data-dialog-tone="add" role="dialog" aria-modal="true" aria-labelledby="createUserModalTitle" aria-describedby="createUserModalHint">
     <div class="pd-card"><div class="pd-header"><span class="pd-heading-icon"><i class="fas fa-user-plus" aria-hidden="true"></i></span><div class="pd-heading-copy"><h2 id="createUserModalTitle">Add a user</h2><p id="createUserModalHint">Create an account and choose what this person can access.</p></div><button type="button" class="pd-close" aria-label="Close add a user" onclick="closeUserDialog('createUserModal')"><i class="fas fa-xmark" aria-hidden="true"></i></button></div>
-    <form data-portal-save method="POST" ><input type="hidden" name="create_user" value="1"><div class="pd-body"><p class="pd-required-note">Fields marked * are required.</p><div class="pd-callout"><a href="layout.php?page=convert_examinee">Enroll passed examinees</a><p class="pd-hint">Preserve the existing account and assign an official student ID and academic placement.</p></div><fieldset class="pd-group"><legend>Personal details</legend><div class="pd-grid"><div class="pd-field"><label for="create_first_name">First name *</label><input type="text" name="first_name" id="create_first_name" required autocomplete="given-name"></div><div class="pd-field"><label for="create_last_name">Last name *</label><input type="text" name="last_name" id="create_last_name" required autocomplete="family-name"></div></div><div class="pd-grid"><div class="pd-field"><label for="create_middle_name">Middle name <span class=pd-optional>Optional</span></label><input type="text" name="middle_name" id="create_middle_name" autocomplete="additional-name"></div><div class="pd-field"><label for="create_email">Email</label><input type="email" name="email" id="create_email" autocomplete="email" aria-describedby="create_email-hint"><p class=pd-hint><span id="create_email-hint">Required for staff and examinee accounts.</span></p></div></div></fieldset><fieldset class="pd-group"><legend>Account & access</legend><div class="pd-grid"><div class="pd-field"><label for="createRole">Account role *</label><select name="role" id="createRole" required onchange="toggleStudentFields()"><option value="student">Student</option><option value="examinee">Examinee</option><option value="guidance_advocate">Guidance advocate</option><option value="admin">Admin / Counselor</option><option value="super_admin">Superadmin</option></select><p class="pd-hint">Controls which pages this person can access.</p></div><div id="positionField"><div class="pd-field"><label for="create_position">Position <span class=pd-optional>Optional</span></label><input type="text" name="position" id="create_position" ></div></div></div><div id="studentIdField" class="pd-grid" style="margin-top:16px"><div class="pd-field"><label for="create_student_id">Student ID</label><input type="text" name="student_id" id="create_student_id" ><p class=pd-hint>Use the official school ID. Required when converting an examinee.</p></div></div><div class="pd-grid"><div class="pd-field pd-span"><label for="create_password">Initial password</label><div class="pd-password"><input type="password" name="password" id="create_password" autocomplete="new-password" ><button type="button" data-password-toggle="create_password" aria-controls="create_password" aria-pressed="false">Show</button></div><p class="pd-hint" id="create_password-hint">Leave blank to use the default: password123. Share it with the account holder.</p></div></div></fieldset></div><div class="pd-footer"><button type="button" class="pd-button" onclick="closeUserDialog('createUserModal')">Cancel</button><button type="submit" class="pd-button pd-button-primary">Create account</button></div></form></div></div>
+    <form data-portal-save method="POST" ><input type="hidden" name="_users_csrf" value="<?=htmlspecialchars($_SESSION['user_management_csrf'],ENT_QUOTES)?>"><input type="hidden" name="create_user" value="1"><div class="pd-body"><p class="pd-required-note">Fields marked * are required.</p><div class="pd-callout"><a href="layout.php?page=convert_examinee">Enroll passed examinees</a><p class="pd-hint">Preserve the existing account and assign an official student ID and academic placement.</p></div><fieldset class="pd-group"><legend>Personal details</legend><div class="pd-grid"><div class="pd-field"><label for="create_first_name">First name *</label><input type="text" name="first_name" id="create_first_name" required autocomplete="given-name"></div><div class="pd-field"><label for="create_last_name">Last name *</label><input type="text" name="last_name" id="create_last_name" required autocomplete="family-name"></div></div><div class="pd-grid"><div class="pd-field"><label for="create_middle_name">Middle name <span class=pd-optional>Optional</span></label><input type="text" name="middle_name" id="create_middle_name" autocomplete="additional-name"></div><div class="pd-field"><label for="create_email">Email</label><input type="email" name="email" id="create_email" autocomplete="email" aria-describedby="create_email-hint"><p class=pd-hint><span id="create_email-hint">Required for staff and examinee accounts.</span></p></div></div></fieldset><fieldset class="pd-group"><legend>Account & access</legend><div class="pd-grid"><div class="pd-field"><label for="createRole">Account role *</label><select name="role" id="createRole" required onchange="toggleStudentFields()"><option value="student">Student</option><option value="examinee">Examinee</option><option value="guidance_advocate">Guidance advocate</option><option value="admin">Admin / Counselor</option><option value="super_admin">Superadmin</option></select><p class="pd-hint">Controls which pages this person can access.</p></div><div id="positionField"><div class="pd-field"><label for="create_position">Position <span class=pd-optional>Optional</span></label><input type="text" name="position" id="create_position" ></div></div></div><div id="studentIdField" class="pd-grid" style="margin-top:16px"><div class="pd-field"><label for="create_student_id">Student ID</label><input type="text" name="student_id" id="create_student_id" ><p class=pd-hint>Use the official school ID. Required when converting an examinee.</p></div></div><div class="pd-grid"><div class="pd-field pd-span"><label for="create_password">Initial password</label><div class="pd-password"><input type="password" name="password" id="create_password" autocomplete="new-password" ><button type="button" data-password-toggle="create_password" aria-controls="create_password" aria-pressed="false">Show</button></div><p class="pd-hint" id="create_password-hint">Leave blank to use the default: password123. Share it with the account holder.</p></div></div></fieldset></div><div class="pd-footer"><button type="button" class="pd-button" onclick="closeUserDialog('createUserModal')">Cancel</button><button type="submit" class="pd-button pd-button-primary">Create account</button></div></form></div></div>
 <div id="editUserModal" class="um-modal pd-overlay hidden" data-portal-dialog data-dialog-tone="edit" role="dialog" aria-modal="true" aria-labelledby="editUserModalTitle" aria-describedby="editUserModalHint">
     <div class="pd-card"><div class="pd-header"><span class="pd-heading-icon"><i class="fas fa-user-pen" aria-hidden="true"></i></span><div class="pd-heading-copy"><h2 id="editUserModalTitle">Edit account details</h2><p id="editUserModalHint">Update this person’s information, role, and sign-in access.</p></div><button type="button" class="pd-close" aria-label="Close edit account details" onclick="closeUserDialog('editUserModal')"><i class="fas fa-xmark" aria-hidden="true"></i></button></div>
-    <form data-portal-save method="POST" ><input type="hidden" name="edit_user" value="1"><input type="hidden" name="user_id" id="edit_user_id"><div class="pd-body"><p class="pd-required-note">Fields marked * are required.</p><fieldset class="pd-group"><legend>Personal details</legend><div class="pd-grid"><div class="pd-field"><label for="edit_first_name">First name *</label><input type="text" name="first_name" id="edit_first_name" required autocomplete="given-name"></div><div class="pd-field"><label for="edit_last_name">Last name *</label><input type="text" name="last_name" id="edit_last_name" required autocomplete="family-name"></div></div><div class="pd-grid"><div class="pd-field"><label for="edit_middle_name">Middle name <span class=pd-optional>Optional</span></label><input type="text" name="middle_name" id="edit_middle_name" ></div><div class="pd-field"><label for="edit_email">Email</label><input type="email" name="email" id="edit_email" autocomplete="email"></div></div></fieldset><fieldset class="pd-group"><legend>Account & access</legend><div class="pd-grid"><div class="pd-field"><label for="edit_role">Account role *</label><select name="role" id="edit_role" required><option value="student">Student</option><option value="examinee">Examinee</option><option value="guidance_advocate">Guidance advocate</option><option value="admin">Admin / Counselor</option><option value="super_admin">Superadmin</option></select><p class="pd-hint">Controls which pages this person can access.</p></div><div class="pd-field"><label for="edit_student_id">Student ID</label><input type="text" name="student_id" id="edit_student_id" ><p class=pd-hint>Used for student accounts.</p></div></div><label class="pd-status" for="edit_is_active" style="margin-top:17px"><input type="checkbox" name="is_active" id="edit_is_active" value="1"><span><strong>Allow sign-in</strong><small>Checked: this account can sign in. Unchecked: sign-in is disabled.</small></span></label></fieldset></div><div class="pd-footer"><button type="button" class="pd-button" onclick="closeUserDialog('editUserModal')">Cancel</button><button type="submit" class="pd-button pd-button-primary">Save changes</button></div></form></div></div>
+    <form data-portal-save method="POST" ><input type="hidden" name="_users_csrf" value="<?=htmlspecialchars($_SESSION['user_management_csrf'],ENT_QUOTES)?>"><input type="hidden" name="edit_user" value="1"><input type="hidden" name="user_id" id="edit_user_id"><div class="pd-body"><p class="pd-required-note">Fields marked * are required.</p><fieldset class="pd-group"><legend>Personal details</legend><div class="pd-grid"><div class="pd-field"><label for="edit_first_name">First name *</label><input type="text" name="first_name" id="edit_first_name" required autocomplete="given-name"></div><div class="pd-field"><label for="edit_last_name">Last name *</label><input type="text" name="last_name" id="edit_last_name" required autocomplete="family-name"></div></div><div class="pd-grid"><div class="pd-field"><label for="edit_middle_name">Middle name <span class=pd-optional>Optional</span></label><input type="text" name="middle_name" id="edit_middle_name" ></div><div class="pd-field"><label for="edit_email">Email</label><input type="email" name="email" id="edit_email" autocomplete="email"></div></div></fieldset><fieldset class="pd-group"><legend>Account & access</legend><div class="pd-grid"><div class="pd-field"><label for="edit_role">Account role *</label><select name="role" id="edit_role" required><option value="student">Student</option><option value="examinee">Examinee</option><option value="guidance_advocate">Guidance advocate</option><option value="admin">Admin / Counselor</option><option value="super_admin">Superadmin</option></select><p class="pd-hint">Controls which pages this person can access.</p></div><div class="pd-field"><label for="edit_student_id">Student ID</label><input type="text" name="student_id" id="edit_student_id" ><p class=pd-hint>Used for student accounts.</p></div></div><label class="pd-status" for="edit_is_active" style="margin-top:17px"><input type="checkbox" name="is_active" id="edit_is_active" value="1"><span><strong>Allow sign-in</strong><small>Checked: this account can sign in. Unchecked: sign-in is disabled.</small></span></label></fieldset></div><div class="pd-footer"><button type="button" class="pd-button" onclick="closeUserDialog('editUserModal')">Cancel</button><button type="submit" class="pd-button pd-button-primary">Save changes</button></div></form></div></div>
 <div id="resetPasswordModal" class="um-modal pd-overlay hidden" data-portal-dialog data-dialog-tone="security" role="dialog" aria-modal="true" aria-labelledby="resetPasswordModalTitle" aria-describedby="resetPasswordModalHint">
     <div class="pd-card pd-card-small"><div class="pd-header"><span class="pd-heading-icon"><i class="fas fa-key" aria-hidden="true"></i></span><div class="pd-heading-copy"><h2 id="resetPasswordModalTitle">Reset password</h2><p id="resetPasswordModalHint">Replace the current password with a new one.</p></div><button type="button" class="pd-close" aria-label="Close reset password" onclick="closeUserDialog('resetPasswordModal')"><i class="fas fa-xmark" aria-hidden="true"></i></button></div>
-    <form data-portal-save method="POST" ><input type="hidden" name="reset_password" value="1"><input type="hidden" name="user_id" id="reset_user_id"><div class="pd-body"><div class="pd-callout pd-callout-warning"><strong>You are resetting the password for</strong><span id="reset_user_name" class="pd-account-name"></span></div><div class="pd-field pd-span"><label for="reset_new_password">New password *</label><div class="pd-password"><input type="password" name="new_password" id="reset_new_password" autocomplete="new-password" required minlength="8" aria-describedby="reset_new_password-hint"><button type="button" data-password-toggle="reset_new_password" aria-controls="reset_new_password" aria-pressed="false">Show</button></div><p class="pd-hint" id="reset_new_password-hint">Use at least 8 characters. The account holder will need this new password to sign in.</p></div></div><div class="pd-footer"><button type="button" class="pd-button" onclick="closeUserDialog('resetPasswordModal')">Cancel</button><button type="submit" class="pd-button pd-button-primary">Reset password</button></div></form></div></div>
+    <form data-portal-save method="POST" ><input type="hidden" name="_users_csrf" value="<?=htmlspecialchars($_SESSION['user_management_csrf'],ENT_QUOTES)?>"><input type="hidden" name="reset_password" value="1"><input type="hidden" name="user_id" id="reset_user_id"><div class="pd-body"><div class="pd-callout pd-callout-warning"><strong>You are resetting the password for</strong><span id="reset_user_name" class="pd-account-name"></span></div><div class="pd-field pd-span"><label for="reset_new_password">New password *</label><div class="pd-password"><input type="password" name="new_password" id="reset_new_password" autocomplete="new-password" required minlength="8" aria-describedby="reset_new_password-hint"><button type="button" data-password-toggle="reset_new_password" aria-controls="reset_new_password" aria-pressed="false">Show</button></div><p class="pd-hint" id="reset_new_password-hint">Use at least 8 characters. The account holder will need this new password to sign in.</p></div></div><div class="pd-footer"><button type="button" class="pd-button" onclick="closeUserDialog('resetPasswordModal')">Cancel</button><button type="submit" class="pd-button pd-button-primary">Reset password</button></div></form></div></div>
 <div id="importModal" class="um-modal pd-overlay hidden" data-portal-dialog data-dialog-tone="import" role="dialog" aria-modal="true" aria-labelledby="importModalTitle" aria-describedby="importModalHint">
     <div class="pd-card pd-card-small"><div class="pd-header"><span class="pd-heading-icon"><i class="fas fa-file-arrow-up" aria-hidden="true"></i></span><div class="pd-heading-copy"><h2 id="importModalTitle">Import users from CSV</h2><p id="importModalHint">Add multiple accounts using the provided spreadsheet template.</p></div><button type="button" class="pd-close" aria-label="Close import users from csv" onclick="closeUserDialog('importModal')"><i class="fas fa-xmark" aria-hidden="true"></i></button></div>
-    <form data-portal-save method="POST" enctype="multipart/form-data"><div class="pd-body"><div class="pd-callout"><strong>Start with the sample CSV</strong>Download the template, fill in the user details, then upload the completed file.</div><div class="pd-upload pd-field"><label for="userCsvFile">CSV file *</label><input type="file" name="csv_file" id="userCsvFile" accept=".csv" required aria-describedby="userCsvHint"><p class="pd-hint" id="userCsvHint">Choose a .csv file with one user per row.</p></div><p class="pd-schema">Column order: password, email, first_name, middle_name, last_name, student_id, role.</p><button type="submit" name="generate_sample" value="1" data-full-navigation formnovalidate class="pd-button" style="margin-top:16px"><i class="fas fa-download" aria-hidden="true"></i>Download sample CSV</button></div><div class="pd-footer"><button type="button" class="pd-button" onclick="closeUserDialog('importModal')">Cancel</button><button type="submit" name="import_csv" value="1" class="pd-button pd-button-primary">Import users</button></div></form></div></div>
+    <form data-portal-save method="POST" enctype="multipart/form-data"><input type="hidden" name="_users_csrf" value="<?=htmlspecialchars($_SESSION['user_management_csrf'],ENT_QUOTES)?>"><div class="pd-body"><div class="pd-callout"><strong>Start with the sample CSV</strong>Download the template, fill in the user details, then upload the completed file.</div><div class="pd-upload pd-field"><label for="userCsvFile">CSV file *</label><input type="file" name="csv_file" id="userCsvFile" accept=".csv" required aria-describedby="userCsvHint"><p class="pd-hint" id="userCsvHint">Choose a .csv file with one user per row.</p></div><p class="pd-schema">Column order: password, email, first_name, middle_name, last_name, student_id, role.</p><button type="submit" name="generate_sample" value="1" data-full-navigation formnovalidate class="pd-button" style="margin-top:16px"><i class="fas fa-download" aria-hidden="true"></i>Download sample CSV</button></div><div class="pd-footer"><button type="button" class="pd-button" onclick="closeUserDialog('importModal')">Cancel</button><button type="submit" name="import_csv" value="1" class="pd-button pd-button-primary">Import users</button></div></form></div></div>

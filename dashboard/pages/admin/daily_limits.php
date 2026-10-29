@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../../../classes/DailyBookingLimit.php';
+require_once __DIR__.'/../../../classes/scheduling/DailyBookingLimit.php';
 
 $dailyLimit = new DailyBookingLimit($db);
 $msgs = fetchSessionMessages();

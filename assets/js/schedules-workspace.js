@@ -16,11 +16,11 @@
         for(const service of ['counseling','entrance_exam']){
             const stats=day[service],card=document.createElement('section'),header=document.createElement('header'),title=document.createElement('h4'),tag=document.createElement('small'),count=document.createElement('div'),number=document.createElement('strong'),label=document.createElement('span'),limit=document.createElement('p'),remaining=document.createElement('p');
             card.className='sch-booking-card';card.dataset.service=service;
-            title.textContent=service==='counseling'?'Counseling':'Entrance exam';tag.textContent=stats.custom?'Custom limit':service==='counseling'?'Default limit':'Not configured';header.append(title,tag);
-            count.className='sch-booking-count';number.textContent=stats.booked;label.textContent='booked';count.append(number,label);limit.textContent='Daily limit: '+(stats.limit===null?'Not set':stats.limit);
+            title.textContent=service==='counseling'?'Counseling':'Entrance exam';tag.textContent=stats.custom?'Custom limit':service==='counseling'?'Default limit':'No attendee limit';header.append(title,tag);
+            count.className='sch-booking-count';number.textContent=stats.booked;label.textContent='booked';count.append(number,label);limit.textContent='Daily limit: '+(stats.limit===null?'Unlimited':stats.limit);
             card.append(header,count,limit);
             if(stats.limit!==null){const meter=document.createElement('progress');meter.max=Math.max(1,stats.limit);meter.value=Math.min(stats.used,stats.limit);meter.setAttribute('aria-label',title.textContent+' capacity used');card.appendChild(meter);remaining.textContent=stats.used+' counted toward limit · '+Math.max(0,stats.limit-stats.used)+' capacity remaining';remaining.dataset.full=String(stats.used>=stats.limit);}
-            else remaining.textContent='Set a limit and an entrance exam schedule to enable booking.';
+            else remaining.textContent='No attendee limit by default. A published exam schedule is required; set a daily limit only when needed.';
             card.appendChild(remaining);holder.appendChild(card);
         }
     }

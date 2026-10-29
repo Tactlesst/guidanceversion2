@@ -1,6 +1,6 @@
 <?php
 if(!defined('IN_LAYOUT')){http_response_code(403);exit;}
-require_once __DIR__ . '/../../../classes/AnnouncementPublication.php';
+require_once __DIR__.'/../../../classes/announcements/AnnouncementPublication.php';
 $publication=new AnnouncementPublication($db);
 $msgs = fetchSessionMessages();
 $success_message = $msgs['success'];

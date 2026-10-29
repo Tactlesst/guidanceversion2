@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__.'/../config/database.php';require_once __DIR__.'/../includes/session.php';require_once __DIR__.'/../classes/ReportApproval.php';
+require_once __DIR__.'/../config/database.php';require_once __DIR__.'/../includes/core/session.php';require_once __DIR__.'/../classes/reporting/ReportApproval.php';
 header('Content-Type: application/json; charset=utf-8');header('Cache-Control: private, no-store');
 try {
     if($_SERVER['REQUEST_METHOD']!=='POST'||empty($_SESSION['user_id'])){http_response_code(403);throw new RuntimeException('Please sign in and use the approval controls.');}

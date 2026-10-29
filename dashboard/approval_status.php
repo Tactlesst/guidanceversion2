@@ -1,4 +1,4 @@
 <?php
-require_once __DIR__.'/../config/database.php';require_once __DIR__.'/../includes/session.php';require_once __DIR__.'/../classes/ReportApproval.php';
+require_once __DIR__.'/../config/database.php';require_once __DIR__.'/../includes/core/session.php';require_once __DIR__.'/../classes/reporting/ReportApproval.php';
 header('Content-Type: application/json; charset=utf-8');header('Cache-Control: private, no-store');header('Vary: Cookie');header('X-Content-Type-Options: nosniff');
 try{if(($_SERVER['REQUEST_METHOD']??'GET')!=='GET'){http_response_code(405);throw new RuntimeException('Use the status display.');}if(empty($_SESSION['user_id'])){http_response_code(401);throw new RuntimeException('Please sign in again.');}$db=(new Database)->getConnection();$state=(new ReportApproval($db))->state((int)$_SESSION['user_id']);session_write_close();echo json_encode(['ok'=>true]+$state,JSON_INVALID_UTF8_SUBSTITUTE|JSON_THROW_ON_ERROR);}catch(Throwable $e){if(http_response_code()<400)http_response_code(403);echo json_encode(['error'=>$e instanceof PDOException?'Approval status is temporarily unavailable.':$e->getMessage()]);}

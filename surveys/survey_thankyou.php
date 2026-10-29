@@ -8,7 +8,7 @@ if (!defined('IN_LAYOUT')) {
     exit();
 }
 
-require_once __DIR__.'/../includes/survey_assignment.php';require_once __DIR__.'/../includes/survey_annual.php';
+require_once __DIR__.'/../includes/surveys/assignment.php';require_once __DIR__.'/../includes/surveys/annual.php';
 $assignmentQuery=$db->prepare('SELECT department,grade_level FROM student_profiles WHERE user_id=?');$assignmentQuery->execute([(int)$uid]);$assignedSurvey=studentSurveyAssignment($assignmentQuery->fetch(PDO::FETCH_ASSOC)?:[]);
 if(($role??'')!=='student'||($assignedSurvey['kind']??'')!=='mi'){if($assignedSurvey&&($role??'')==='student'){header('Location: layout.php?page='.$assignedSurvey['results']);exit;}http_response_code(403);echo '<p>No survey is assigned to this education level.</p>';return;}
 $user_id = $uid;

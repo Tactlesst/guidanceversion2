@@ -1,5 +1,6 @@
 <?php
-require_once __DIR__ . '/../../../classes/User.php';
+if(!defined('IN_LAYOUT')||$role!=='super_admin'){http_response_code(403);return;}
+require_once __DIR__.'/../../../classes/identity/User.php';
 
 $user_obj = new User($db);
 
@@ -16,6 +17,7 @@ if ($_POST) {
             
             // Handle student IDs
             foreach ($_POST['student_ids'] as $user_id => $student_id) {
+                $studentCheck=$db->prepare("SELECT 1 FROM users WHERE id=? AND role='student' AND COALESCE(archived,0)=0");$studentCheck->execute([$user_id]);if(!$studentCheck->fetchColumn())throw new RuntimeException('Choose an existing student account.');
                 if (!empty(trim($student_id))) {
                     $sid = trim($student_id);
                     // Check if student_id already exists

@@ -1,9 +1,9 @@
 <?php
 if(!defined('IN_LAYOUT')){http_response_code(403);exit;}
-require_once __DIR__ . '/../../../classes/PersonalDataSheet.php';
+require_once __DIR__.'/../../../classes/records/PersonalDataSheet.php';
 
 $pds = new PersonalDataSheet($db);
-require_once __DIR__.'/../../../includes/assessment_result_queries.php';
+require_once __DIR__.'/../../../includes/surveys/result_queries.php';
 
 // AJAX endpoint for fetching survey results
 if (isset($_GET['action']) && $_GET['action']==='fetch') {
@@ -24,18 +24,18 @@ if (isset($_GET['action']) && $_GET['action']==='fetch') {
     exit;
 }
 
-require_once __DIR__.'/../../../includes/assessment_profile.php';
+require_once __DIR__.'/../../../includes/surveys/assessment_profile.php';
 if(in_array($_GET['action']??'',['get_details','print_profile'],true)){
     if(ob_get_level())ob_end_clean();header('Cache-Control: private, no-store');
     try{
         $type=is_string($_GET['type']??null)?$_GET['type']:'';$id=filter_var($_GET['id']??null,FILTER_VALIDATE_INT);
         if(!$id||$id<1)throw new InvalidArgumentException('Choose a valid assessment.');
         $profile=AssessmentProfile::load($db,$type,(int)$id);
-        if($_GET['action']==='print_profile'&&$role==='guidance_advocate'){require_once __DIR__.'/../../../classes/ReportApproval.php';(new ReportApproval($db))->consume((int)$uid,(int)($_GET['approval_id']??0),'assessment','print',['type'=>$type,'id'=>(int)$id]);}
+        if($_GET['action']==='print_profile'&&$role==='guidance_advocate'){require_once __DIR__.'/../../../classes/reporting/ReportApproval.php';(new ReportApproval($db))->consume((int)$uid,(int)($_GET['approval_id']??0),'assessment','print',['type'=>$type,'id'=>(int)$id]);}
         if(function_exists('staffActivityInteraction'))staffActivityInteraction('survey_results',$_GET['action']==='print_profile'?'print_assessment':'view_assessment');
         if($_GET['action']==='print_profile'){
-            require_once __DIR__.'/../../../includes/learner_profile_paper.php';
-            require_once __DIR__.'/../../../includes/pds_paper.php';
+            require_once __DIR__.'/../../../includes/surveys/learner_profile_paper.php';
+            require_once __DIR__.'/../../../includes/pds/paper.php';
             header('Content-Type: text/html; charset=utf-8');header('X-Frame-Options: SAMEORIGIN');
             echo LearnerProfilePaper::render($profile,AssessmentProfile::learner($db,$profile,($_SESSION['role']??'')==='admin'),PDSPaperDocument::baseUrl());
         }else{header('Content-Type: application/json');echo json_encode($profile,JSON_INVALID_UTF8_SUBSTITUTE);}

@@ -2,7 +2,7 @@
 if(!defined('IN_LAYOUT')||($role??'')!=='student'){http_response_code(403);return;}
 $sdEscape=static fn($v)=>htmlspecialchars((string)($v??''),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
 $sdDate=static function($v){if(!$v)return 'Not recorded';$time=strtotime($v);return $time===false?'Not recorded':date('M j, Y',$time);};
-require_once __DIR__.'/../../includes/survey_assignment.php';require_once __DIR__.'/../../includes/survey_annual.php';$sdSurveyYear=SurveyAnnual::year($db,(int)$uid);$sdAssigned=studentSurveyAssignment($student_profile?:[]);$sdEligible=$sdAssigned!==null;
+require_once __DIR__.'/../../includes/surveys/assignment.php';require_once __DIR__.'/../../includes/surveys/annual.php';$sdSurveyYear=SurveyAnnual::year($db,(int)$uid);$sdAssigned=studentSurveyAssignment($student_profile?:[]);$sdEligible=$sdAssigned!==null;
 $sdPds=null;$sdSurvey=null;$sdNext=null;$sdPdsKnown=true;$sdSurveyKnown=true;$sdAppointmentKnown=true;$sdServices=['pds_enabled'=>false,'counseling_enabled'=>false];
 try{$q=$db->prepare('SELECT id,updated_at FROM pds WHERE user_id=? ORDER BY updated_at DESC,id DESC LIMIT 1');$q->execute([$uid]);$sdPds=$q->fetch(PDO::FETCH_ASSOC)?:null;}catch(Throwable $e){$sdPdsKnown=false;}
 if($sdEligible){try{$sdSurvey=$sdSurveyYear!==''?SurveyAnnual::record($db,(int)$uid,$sdAssigned['kind'],$sdSurveyYear):null;}catch(Throwable $e){$sdSurveyKnown=false;}}

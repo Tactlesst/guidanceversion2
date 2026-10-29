@@ -1,8 +1,8 @@
 <?php
 ob_start();
 require_once '../config/database.php';
-require_once '../includes/session.php';
-require_once '../includes/helpers.php';
+require_once '../includes/core/session.php';
+require_once '../includes/core/helpers.php';
 checkLogin();
 define('IN_LAYOUT', true);
 
@@ -26,16 +26,9 @@ try {
 
 // Allowed pages and their titles
 $pages = [
+    'patch_notes'=>'Patch notes', 'pds_entry'=>'Enter paper PDS',
     'convert_examinee'=>'Convert examinee to student',
     'approvals'=>'Report approvals', 'advocate_activity'=>'Advocate activity',
-    'reports' => 'Reports & Insights',
-    'examinee_reports' => 'Examinee Reports',
-    'reports' => 'Reports & Insights',
-    'examinee_reports' => 'Examinee Reports',
-    'reports' => 'Reports & Insights',
-    'examinee_reports' => 'Examinee Reports',
-    'reports' => 'Reports & Insights',
-    'examinee_reports' => 'Examinee Reports',
     'reports' => 'Reports & Insights',
     'examinee_reports' => 'Examinee Reports',
     'release_results' => 'Release Exam Results',
@@ -81,20 +74,21 @@ $pages = [
     'passed_examinees_report' => 'Passed Examinees',
 ];
 
-$page = $_GET['page'] ?? 'dashboard';
+$page = is_string($_GET['page']??null)?$_GET['page']:'dashboard';
 if (!array_key_exists($page, $pages)) $page = 'dashboard';
 
 // Role-based access check
 $student_pages = ['view_application','view_exam_results','notifications','dashboard','profile','fill_pds','view_pds','pds_history','book_appointment','view_appointments','complete_profile','multiple_intelligence_survey','survey_history','survey_thankyou','learning_style_inventory','learning_style_inventory_intermediate'];
 $examinee_pages = ['pds_history','fill_pds','view_pds','notifications','dashboard','profile','book_exam','view_exam_results','view_application'];
-$admin_pages = ['convert_examinee','approvals','advocate_activity','notifications','pds_history','reports','examinee_reports','reports','examinee_reports','reports','examinee_reports','reports','examinee_reports','reports','examinee_reports','release_results','missing_student_ids','notifications','dashboard','profile','student_records','student_list_report','manage_counseling','manage_exams','manage_announcements','schedules','daily_limits','counseling_reports','ses_analytics','olsat_reports','user_management','academic_settings','system_settings','backup_restore','system_logs','admin_view_pds','counseling_history','survey_results','passed_examinees_report'];
+$admin_pages = ['patch_notes','pds_entry','convert_examinee','approvals','advocate_activity','notifications','pds_history','reports','examinee_reports','release_results','missing_student_ids','dashboard','profile','student_records','student_list_report','manage_counseling','manage_exams','manage_announcements','schedules','daily_limits','counseling_reports','ses_analytics','olsat_reports','user_management','academic_settings','system_settings','backup_restore','system_logs','admin_view_pds','counseling_history','survey_results','passed_examinees_report'];
 
 if (in_array($role, ['student']) && !in_array($page, $student_pages)) $page = 'dashboard';
 if ($role === 'examinee' && !in_array($page, $examinee_pages)) $page = 'dashboard';
 if (in_array($role, ['super_admin','admin','guidance_advocate']) && !in_array($page, $admin_pages)) $page = 'dashboard';
 
 $restricted = [
- 'convert_examinee'=>['super_admin'],
+ 'patch_notes'=>['super_admin'], 'pds_entry'=>['admin','guidance_advocate','super_admin'],
+ 'convert_examinee'=>['super_admin'], 'missing_student_ids'=>['super_admin'],
  'advocate_activity'=>['admin','super_admin'],
  'approvals'=>['admin','super_admin','guidance_advocate'],
  'survey_history'=>['student'],
@@ -105,7 +99,7 @@ $restricted = [
  'release_results'=>['super_admin','admin','guidance_advocate']
 ];
 if (isset($restricted[$page]) && !in_array($role,$restricted[$page],true)) { header('Location: ../unauthorized.php'); exit; }
-require_once __DIR__.'/../classes/OfficePolicy.php';
+require_once __DIR__.'/../classes/identity/OfficePolicy.php';
 $_SESSION['office_approval_csrf']=$_SESSION['office_approval_csrf']??bin2hex(random_bytes(32));
 try {
     OfficePolicy::enforce($db,$user_info,$page,$_POST,$_GET);
@@ -116,65 +110,63 @@ try {
     else echo '<p role="alert">'.htmlspecialchars($e->getMessage(),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'</p><a href="layout.php?page=dashboard">Return to dashboard</a>';
     exit;
 }
+$_SESSION['portal_csrf']=$_SESSION['portal_csrf']??bin2hex(random_bytes(32));
+if(($_SERVER['REQUEST_METHOD']??'GET')==='POST'){
+ $portalToken=$_SERVER['HTTP_X_PORTAL_CSRF']??($_POST['_portal_csrf']??null);
+ if(!is_string($portalToken)||!hash_equals($_SESSION['portal_csrf'],$portalToken)){http_response_code(403);header('Content-Type: application/json');header('Cache-Control: private, no-store');echo json_encode(['error'=>'Refresh this page before submitting an action.']);exit;}
+}
 $page_title = $pages[$page];
 
 // Map page to file path
 $file_map = [
+ 'patch_notes'=>__DIR__.'/pages/admin/patch_notes.php','pds_entry'=>__DIR__.'/pages/admin/pds_entry.php',
  'convert_examinee'=>__DIR__.'/pages/admin/convert_examinee.php',
     'approvals'=>__DIR__.'/pages/admin/approvals.php',
     'advocate_activity'=>__DIR__.'/pages/admin/advocate_activity.php',
-    'reports' => __DIR__ . '/pages/reports/reports.php',
-    'examinee_reports' => __DIR__ . '/pages/reports/examinee_reports.php',
-    'reports' => __DIR__ . '/pages/reports/reports.php',
-    'examinee_reports' => __DIR__ . '/pages/reports/examinee_reports.php',
-    'reports' => __DIR__ . '/pages/reports/reports.php',
-    'examinee_reports' => __DIR__ . '/pages/reports/examinee_reports.php',
-    'reports' => __DIR__ . '/pages/reports/reports.php',
-    'examinee_reports' => __DIR__ . '/pages/reports/examinee_reports.php',
-    'reports' => __DIR__ . '/pages/reports/reports.php',
-    'examinee_reports' => __DIR__ . '/pages/reports/examinee_reports.php',
-    'release_results' => __DIR__ . '/pages/admin/release_results.php',
-    'dashboard' => __DIR__ . '/pages/index.php',
-    'notifications' => __DIR__ . '/pages/notifications.php',
-    'profile' => __DIR__ . '/profile.php',
+    'reports' => __DIR__.'/pages/reports/reports.php',
+    'examinee_reports' => __DIR__.'/pages/reports/examinee_reports.php',
+    'release_results' => __DIR__.'/pages/admin/release_results.php',
+    'dashboard' => __DIR__.'/pages/index.php',
+    'notifications' => __DIR__.'/pages/notifications.php',
+    'profile' => __DIR__.'/profile.php',
     // Student pages
-    'fill_pds' => __DIR__ . '/../pds/fill_pds.php',
-    'view_pds' => __DIR__ . '/../pds/view_pds.php',
-    'pds_history' => __DIR__ . '/../pds/history.php',
-    'book_appointment' => __DIR__ . '/../counseling/book_appointment.php',
-    'view_appointments' => __DIR__ . '/../counseling/view_appointments.php',
-    'complete_profile' => __DIR__ . '/../profile/complete_profile.php',
-    'multiple_intelligence_survey' => __DIR__ . '/../surveys/multiple_intelligence_survey.php',
-    'learning_style_inventory' => __DIR__ . '/../surveys/learning_style_inventory.php',
-    'learning_style_inventory_intermediate' => __DIR__ . '/../surveys/learning_style_inventory_intermediate.php',
-    'survey_thankyou' => __DIR__ . '/../surveys/survey_thankyou.php',
-    'survey_history' => __DIR__ . '/../surveys/history.php',
+    'fill_pds' => __DIR__.'/../pds/fill_pds.php',
+    'view_pds' => __DIR__.'/../pds/view_pds.php',
+    'pds_history' => __DIR__.'/../pds/history.php',
+    'book_appointment' => __DIR__.'/../counseling/book_appointment.php',
+    'view_appointments' => __DIR__.'/../counseling/view_appointments.php',
+    'complete_profile' => __DIR__.'/../profile/complete_profile.php',
+    'multiple_intelligence_survey' => __DIR__.'/../surveys/multiple_intelligence_survey.php',
+    'learning_style_inventory' => __DIR__.'/../surveys/learning_style_inventory.php',
+    'learning_style_inventory_intermediate' => __DIR__.'/../surveys/learning_style_inventory_intermediate.php',
+    'survey_thankyou' => __DIR__.'/../surveys/survey_thankyou.php',
+    'survey_history' => __DIR__.'/../surveys/history.php',
     // Examinee pages
-    'book_exam' => __DIR__ . '/pages/examinee/book_exam.php',
-    'view_exam_results' => __DIR__ . '/pages/examinee/view_exam_results.php',
-    'view_application' => __DIR__ . '/pages/examinee/view_application.php',
+    'book_exam' => __DIR__.'/pages/examinee/book_exam.php',
+    'view_exam_results' => __DIR__.'/pages/examinee/view_exam_results.php',
+    'view_application' => __DIR__.'/pages/examinee/view_application.php',
     // Admin pages
-    'student_records' => __DIR__ . '/pages/admin/student_records.php',
-    'student_list_report' => __DIR__ . '/pages/admin/student_list_report.php',
-    'manage_counseling' => __DIR__ . '/pages/admin/manage_counseling.php',
-    'manage_exams' => __DIR__ . '/pages/admin/manage_exams.php',
-    'manage_announcements' => __DIR__ . '/pages/admin/manage_announcements.php',
-    'schedules' => __DIR__ . '/pages/admin/schedules.php',
-    'daily_limits' => __DIR__ . '/pages/admin/daily_limits.php',
-    'counseling_reports' => __DIR__ . '/pages/reports/counseling_reports.php',
-    'ses_analytics' => __DIR__ . '/pages/reports/ses_analytics.php',
-    'olsat_reports' => __DIR__ . '/pages/reports/olsat_reports.php',
-    'user_management' => __DIR__ . '/pages/admin/user_management.php',
-    'academic_settings' => __DIR__ . '/pages/admin/academic_settings.php',
-    'system_settings' => __DIR__ . '/pages/admin/system_settings.php',
-    'backup_restore' => __DIR__ . '/pages/admin/backup_restore.php',
-    'system_logs' => __DIR__ . '/pages/admin/system_logs.php',
-    'admin_view_pds' => __DIR__ . '/pages/admin/view_pds.php',
-    'counseling_history' => __DIR__ . '/pages/admin/counseling_history.php',
-    'survey_results' => __DIR__ . '/pages/admin/survey_results.php',
-    'passed_examinees_report' => __DIR__ . '/pages/admin/passed_examinees_report.php',
+    'student_records' => __DIR__.'/pages/admin/student_records.php',
+    'student_list_report' => __DIR__.'/pages/admin/student_list_report.php',
+    'manage_counseling' => __DIR__.'/pages/admin/manage_counseling.php',
+    'manage_exams' => __DIR__.'/pages/admin/manage_exams.php',
+    'manage_announcements' => __DIR__.'/pages/admin/manage_announcements.php',
+    'schedules' => __DIR__.'/pages/admin/schedules.php',
+    'daily_limits' => __DIR__.'/pages/admin/daily_limits.php',
+    'counseling_reports' => __DIR__.'/pages/reports/counseling_reports.php',
+    'ses_analytics' => __DIR__.'/pages/reports/ses_analytics.php',
+    'olsat_reports' => __DIR__.'/pages/reports/olsat_reports.php',
+    'user_management' => __DIR__.'/pages/admin/user_management.php',
+    'academic_settings' => __DIR__.'/pages/admin/academic_settings.php',
+    'system_settings' => __DIR__.'/pages/admin/system_settings.php',
+    'backup_restore' => __DIR__.'/pages/admin/backup_restore.php',
+    'system_logs' => __DIR__.'/pages/admin/system_logs.php',
+    'admin_view_pds' => __DIR__.'/pages/admin/view_pds.php',
+    'counseling_history' => __DIR__.'/pages/admin/counseling_history.php',
+    'survey_results' => __DIR__.'/pages/admin/survey_results.php',
+    'passed_examinees_report' => __DIR__.'/pages/admin/passed_examinees_report.php',
 ];
-$content_file = $file_map[$page] ?? __DIR__ . '/pages/index.php';
+$content_file = $file_map[$page] ?? __DIR__.'/pages/index.php';
 
 $first_name = $user_info['first_name'] ?? 'User';
 $last_name = $user_info['last_name'] ?? '';
@@ -199,11 +191,13 @@ function portalSaveRedirect($fallback) {
     $current=array_filter(array_intersect_key($current,$allowed),'is_string');
     return 'layout.php?'.http_build_query(array_merge($current,$destination));
 }
-require_once __DIR__.'/../classes/StaffActivity.php';
+require_once __DIR__.'/../classes/system/StaffActivity.php';
 $portal_page=$page;$portal_title=$page_title;
 ob_start();
 if(file_exists($content_file))include $content_file;else echo '<p>Page not found.</p>';
 $portal_content=ob_get_clean();
+$portal_content=preg_replace_callback('/<form\b[^>]*\bmethod=[\'\"]post[\'\"][^>]*>/i',static fn($m)=>$m[0].'<input type="hidden" name="_portal_csrf" value="'.htmlspecialchars($_SESSION['portal_csrf'],ENT_QUOTES).'">',$portal_content);
+
 if(in_array($role,['admin','guidance_advocate','super_admin'],true)){
     if($role==='guidance_advocate')$portal_content=preg_replace('/(<form\b[^>]*method=[\'"]post[\'"][^>]*>)/i','$1<input type="hidden" name="_office_csrf" value="'.htmlspecialchars($_SESSION['office_approval_csrf'],ENT_QUOTES).'">',$portal_content);
     $portal_content.='<script type="application/json" id="officeApprovalConfig">'.json_encode(['role'=>$role,'uid'=>(int)$uid,'csrf'=>$_SESSION['office_approval_csrf']],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT).'</script>';
@@ -233,20 +227,20 @@ if(($_SERVER['HTTP_X_PORTAL_NAVIGATION']??'')==='1' && in_array($_SERVER['REQUES
 <html lang="en">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= $page_title ?> - SRCB Guidance</title>
+    <meta name="portal-csrf" content="<?=htmlspecialchars($_SESSION['portal_csrf'],ENT_QUOTES)?>"><title><?= $page_title ?> - SRCB Guidance</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script>tailwind.config={theme:{extend:{colors:{primary:'#163269','primary-dark':'#3a56c4'}}}}</script>
-    <script src="../js/shared.js?v=20261027-2" defer></script>
+    <script src="../assets/js/portal-shared.js?v=20261027-2" defer></script>
     <script src="../assets/vendor/acorn/acorn.js" defer></script>
     <link rel="stylesheet" href="../assets/css/portal-dialogs.css?v=20261027-2">
     <script src="../assets/js/portal-dialogs.js?v=20261027-3" defer></script>
     <?php if(in_array($role,['admin','guidance_advocate'],true)):?><link rel="stylesheet" href="../assets/css/counselor-workspace.css?v=20261027-2"><script src="../assets/js/counselor-workspace.js?v=20261028-1" defer></script><link rel="stylesheet" href="../assets/css/workspace-tools.css?v=20261028-4"><script src="../assets/js/office-print.js?v=20261028-2" defer></script><script src="../assets/js/workspace-filters.js?v=20261028-1" defer></script><?php endif;?>
     <link rel="stylesheet" href="../assets/css/pds-paper.css?v=20261028-centered"><script src="../assets/js/pds-paper.js?v=20261028-2" defer></script>
-    <script src="../assets/js/portal-navigation.js?v=20261029-annual-surveys" defer></script>
-    <link rel="stylesheet" href="../assets/css/notifications.css?v=20261029-1"><script src="../assets/js/portal-notifications.js?v=20261029-1" defer></script><script src="../assets/js/office-approvals.js?v=20261029-wait" defer></script><link rel="stylesheet" href="../assets/css/office-approvals.css?v=20261029-wait">
+    <script src="../assets/js/portal-navigation.js?v=20261029-security" defer></script>
+    <link rel="stylesheet" href="../assets/css/notifications.css?v=20261029-1"><script src="../assets/js/portal-notifications.js?v=20261029-session" defer></script><script src="../assets/js/office-approvals.js?v=20261029-wait" defer></script><link rel="stylesheet" href="../assets/css/office-approvals.css?v=20261029-wait">
     <?= portalInertScripts($portal_head) ?>
     <link rel="stylesheet" href="../assets/css/portal.css?v=20261027-2">
 <?php if($role==='super_admin'):?><link rel="stylesheet" href="../assets/css/superadmin.css?v=20261027-2"><?php endif;?>
@@ -255,9 +249,9 @@ if(($_SERVER['HTTP_X_PORTAL_NAVIGATION']??'')==='1' && in_array($_SERVER['REQUES
 <a class="portal-skip" href="#mainContent">Skip to content</a>
 
 <!-- Sidebar -->
-<?php include __DIR__ . '/partials/sidebar.php'; ?>
+<?php include __DIR__.'/partials/sidebar.php'; ?>
 
-<?php include __DIR__ . '/partials/header.php'; ?>
+<?php include __DIR__.'/partials/header.php'; ?>
 
 <div id="sidebarOverlay" class="portal-overlay hidden" aria-hidden="true"></div>
 

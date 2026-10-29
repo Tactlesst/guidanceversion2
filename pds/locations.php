@@ -1,8 +1,8 @@
 <?php
-require_once __DIR__.'/../includes/session.php';
+require_once __DIR__.'/../includes/core/session.php';
 header('Content-Type: application/json; charset=utf-8');header('X-Content-Type-Options: nosniff');
 if(!isLoggedIn()){http_response_code(401);echo '{"error":"Please sign in again."}';exit;}
-require_once __DIR__.'/../includes/pds_address.php';
+require_once __DIR__.'/../includes/pds/address.php';
 try{
     $level=$_GET['level']??'';if(!is_string($level)||!in_array($level,['region','province','city','barangay'],true))throw new InvalidArgumentException();
     $scope=[];foreach(['region','province','city'] as $key){$v=$_GET[$key]??'';if(!is_string($v)||!preg_match('/^(?:\d{10}|__none__)?$/D',$v))throw new InvalidArgumentException();$scope[$key]=$v;}

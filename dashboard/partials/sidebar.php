@@ -7,7 +7,7 @@ if (in_array($role,['admin','guidance_advocate'],true)) {
             ['dashboard','Office overview','fa-house'],
             ['students','Students & records','fa-users',[
                 ['student_records','Student records'],['student_list_report','Student lists & printing'],
-                ['admin_view_pds','Personal data sheets'],['counseling_history','Counseling history'],['survey_results','Survey results']
+                ['admin_view_pds','Personal data sheets'],['pds_entry','Enter paper PDS'],['counseling_history','Counseling history'],['survey_results','Survey results']
             ]],
             ['manage_counseling','Counseling','fa-comments'],
             ['manage_exams','Exam appointments','fa-clipboard-list']
@@ -21,12 +21,12 @@ if (in_array($role,['admin','guidance_advocate'],true)) {
     else $navGroups['Assistance']=[['approvals','My report approvals','fa-clipboard-check']];
 } elseif ($role==='super_admin') {
     $navGroups=['Workspace'=>[['dashboard','Superadmin home','fa-house'],['user_management','Users & accounts','fa-users-gear'],['convert_examinee','Enroll examinee','fa-user-graduate'],['academic_settings','Academic settings','fa-graduation-cap']],
-        'Administration'=>[['backup_restore','Backup & restore','fa-database'],['system_logs','Activity logs','fa-file-lines']]];
+        'Administration'=>[['patch_notes','Patch notes','fa-code-branch'],['backup_restore','Backup & restore','fa-database'],['system_logs','Activity logs','fa-file-lines']]];
 } elseif ($role==='student') {
     $navGroups=['My workspace'=>[['dashboard','Overview','fa-house'],['view_pds','Personal data sheet','fa-file-lines'],['counseling','Counseling','fa-comments',[
         ['book_appointment','Book an appointment'],['view_appointments','My appointments']
     ]]]];
-    require_once __DIR__.'/../../includes/survey_assignment.php';
+    require_once __DIR__.'/../../includes/surveys/assignment.php';
     $sg=$db->prepare('SELECT department,grade_level FROM student_profiles WHERE user_id=?');$sg->execute([$uid]);$assignedSurvey=studentSurveyAssignment($sg->fetch(PDO::FETCH_ASSOC)?:[]);
     $admission=$db->prepare('SELECT 1 FROM entrance_exam_appointments WHERE user_id=? LIMIT 1');$admission->execute([$uid]);if($admission->fetchColumn())$navGroups['My workspace'][]=['view_application','Admission history','fa-clipboard-list'];
     if($assignedSurvey)$navGroups['My workspace'][]=[$assignedSurvey['page'],$assignedSurvey['nav'],'fa-brain'];

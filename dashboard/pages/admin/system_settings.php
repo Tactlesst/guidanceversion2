@@ -1,15 +1,15 @@
 <?php
 if(!defined('IN_LAYOUT')||!in_array($role??'',['admin','super_admin'],true)){http_response_code(403);return;}
 $_SESSION['office_settings_csrf']=$_SESSION['office_settings_csrf']??bin2hex(random_bytes(32));
-if(($_GET['section']??'')==='delivery'||isset($_POST['save_mail_settings'])||isset($_POST['save_website_settings'])){require __DIR__.'/../../../includes/mail_settings_view.php';return;}
+if(($_GET['section']??'')==='delivery'||isset($_POST['save_mail_settings'])||isset($_POST['save_website_settings'])){require __DIR__.'/../../../includes/notifications/settings_view.php';return;}
 $settingsSection=($_GET['section']??'')==='activity'?'activity':'settings';
 
-require_once __DIR__ . '/../../../classes/SystemSettings.php';
+require_once __DIR__.'/../../../classes/system/SystemSettings.php';
 
 $settings = new SystemSettings($db);
 if($settingsSection==='activity'){
  echo '<link rel="stylesheet" href="../assets/css/staff-activity.css?v=20261028-1"><nav class="st-tabs" aria-label="System settings sections"><a href="layout.php?page=system_settings">Office settings</a><a href="layout.php?page=system_settings&amp;section=activity" aria-current="page">Staff activity</a><a href="layout.php?page=system_settings&amp;section=delivery">Email &amp; notifications</a></nav>';
- require __DIR__.'/../../../includes/staff_activity_panel.php';return;
+ require __DIR__.'/../../../includes/staff/activity_panel.php';return;
 }
 
 

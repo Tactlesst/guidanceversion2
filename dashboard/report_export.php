@@ -1,9 +1,9 @@
 <?php
 require_once __DIR__.'/../config/database.php';
-require_once __DIR__.'/../includes/session.php';
-require_once __DIR__.'/../includes/reporting/SchoolReportService.php';
-require_once __DIR__.'/../includes/reporting/SchoolReportRenderer.php';
-require_once __DIR__.'/../classes/SystemLogger.php';require_once __DIR__.'/../classes/ReportApproval.php';
+require_once __DIR__.'/../includes/core/session.php';
+require_once __DIR__.'/../classes/reporting/SchoolReportService.php';
+require_once __DIR__.'/../classes/reporting/SchoolReportRenderer.php';
+require_once __DIR__.'/../classes/system/SystemLogger.php';require_once __DIR__.'/../classes/reporting/ReportApproval.php';
 header('Cache-Control: no-store, private');header('X-Content-Type-Options: nosniff');
 function reportFailure(int $status,string $message):void{http_response_code($status);header('Content-Type: application/json');echo json_encode(['error'=>$message]);exit;}
 if($_SERVER['REQUEST_METHOD']!=='POST')reportFailure(405,'Use the report buttons to prepare an export.');

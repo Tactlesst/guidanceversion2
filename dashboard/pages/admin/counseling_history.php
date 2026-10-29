@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__ . '/../../../config/database.php';
-require_once __DIR__ . '/../../../includes/session.php';
+require_once __DIR__.'/../../../config/database.php';
+require_once __DIR__.'/../../../includes/core/session.php';
 checkLogin();
 $user_info = getUserInfo();
 if (!in_array($user_info['role'], ['admin'])) {
@@ -14,7 +14,7 @@ if (!in_array($user_info['role'], ['admin'])) {
     exit();
 }
 
-require_once __DIR__ . '/../../../classes/CounselingAppointment.php';
+require_once __DIR__.'/../../../classes/counseling/CounselingAppointment.php';
 
 $counseling = new CounselingAppointment($db);
 

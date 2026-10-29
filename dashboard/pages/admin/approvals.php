@@ -1,6 +1,6 @@
 <?php
 if(!defined('IN_LAYOUT')||!in_array($role,['admin','super_admin','guidance_advocate'],true)){http_response_code(403);return;}
-require_once __DIR__.'/../../../classes/ReportApproval.php';require_once __DIR__.'/../../../classes/ApprovalBoardRenderer.php';
+require_once __DIR__.'/../../../classes/reporting/ReportApproval.php';require_once __DIR__.'/../../../classes/reporting/ApprovalBoardRenderer.php';
 $approvalService=new ReportApproval($db);$ae=static fn($v)=>htmlspecialchars((string)$v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');$error='';
 if($_SERVER['REQUEST_METHOD']==='POST'){
     try{

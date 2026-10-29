@@ -1,7 +1,7 @@
 <?php
 if(!defined('IN_LAYOUT')){header('Location: ../dashboard/layout.php?page=survey_history');exit;}
 if(($role??'')!=='student'){http_response_code(403);echo '<p>This survey history is available only to the student who submitted it.</p>';return;}
-require_once __DIR__.'/../includes/survey_annual.php';require_once __DIR__.'/../includes/assessment_profile.php';
+require_once __DIR__.'/../includes/surveys/annual.php';require_once __DIR__.'/../includes/surveys/assessment_profile.php';
 $shE=static fn($v)=>htmlspecialchars((string)($v??''),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');$shYear=is_string($_GET['school_year']??null)?$_GET['school_year']:'';$shPage=is_scalar($_GET['history_page']??1)?max(1,(int)($_GET['history_page']??1)):1;$shData=SurveyAnnual::history($db,(int)$uid,$shYear,$shPage);$shCurrent=SurveyAnnual::year($db,(int)$uid);$shSelected=null;$shError='';
 $shLabels=['mi'=>'Multiple Intelligence','ls'=>'Learning Style','ls_intermediate'=>'Learning Style (Intermediate)'];
 if(isset($_GET['assessment'])){try{$shId=filter_var($_GET['assessment'],FILTER_VALIDATE_INT);$shKind=is_string($_GET['kind']??null)?$_GET['kind']:'';if(!$shId||!isset($shLabels[$shKind]))throw new RuntimeException('Unavailable');$shSelected=AssessmentProfile::load($db,$shKind,(int)$shId);if($shSelected['user_id']!==(int)$uid)throw new RuntimeException('Unavailable');}catch(Throwable $e){$shSelected=null;$shError='This saved survey is unavailable.';http_response_code(404);}}

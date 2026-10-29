@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__ . '/../../../classes/User.php';
-require_once __DIR__ . '/../../../classes/PersonalDataSheet.php';
+require_once __DIR__.'/../../../classes/identity/User.php';
+require_once __DIR__.'/../../../classes/records/PersonalDataSheet.php';
 
 $user_obj = new User($db);
 $pds = new PersonalDataSheet($db);

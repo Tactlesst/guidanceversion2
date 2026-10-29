@@ -1,6 +1,6 @@
 <?php
 if(!defined('IN_LAYOUT')){http_response_code(403);exit;}
-require_once __DIR__.'/SchoolReportService.php';require_once __DIR__.'/../../classes/ReportApproval.php';require_once __DIR__.'/../reports-insights.php';
+require_once __DIR__.'/../../classes/reporting/SchoolReportService.php';require_once __DIR__.'/../../classes/reporting/ReportApproval.php';require_once __DIR__.'/insights.php';
 if(!SchoolReportService::allowed($role??'')){http_response_code(403);exit;}
 $_SESSION['report_csrf']=$_SESSION['report_csrf']??bin2hex(random_bytes(32));
 $reportRoutes=['examinees'=>'examinee_reports','ses'=>'ses_analytics','olsat'=>'olsat_reports','counseling'=>'counseling_reports'];

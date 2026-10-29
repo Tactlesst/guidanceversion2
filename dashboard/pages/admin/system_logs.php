@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../../../classes/SystemLogger.php';
+require_once __DIR__.'/../../../classes/system/SystemLogger.php';
 
 $logger = new SystemLogger($db);
 

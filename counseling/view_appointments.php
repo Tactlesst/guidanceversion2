@@ -3,21 +3,21 @@ $in_layout = defined('IN_LAYOUT');
 
 if (!$in_layout) {
     require_once '../config/database.php';
-    require_once '../includes/session.php';
-    require_once '../classes/CounselingAppointment.php';
-    require_once '../classes/CounselingRemarks.php';
-    require_once '../classes/SystemSettings.php';
-    require_once '../classes/Notification.php';
+    require_once '../includes/core/session.php';
+    require_once '../classes/counseling/CounselingAppointment.php';
+    require_once '../classes/counseling/CounselingRemarks.php';
+    require_once '../classes/system/SystemSettings.php';
+    require_once '../classes/notifications/Notification.php';
     checkLogin();
     checkRole(['student']);
     
     $database = new Database();
     $db = $database->getConnection();
 } else {
-    require_once __DIR__ . '/../classes/CounselingAppointment.php';
-    require_once __DIR__ . '/../classes/CounselingRemarks.php';
-    require_once __DIR__ . '/../classes/SystemSettings.php';
-    require_once __DIR__ . '/../classes/Notification.php';
+    require_once __DIR__.'/../classes/counseling/CounselingAppointment.php';
+    require_once __DIR__.'/../classes/counseling/CounselingRemarks.php';
+    require_once __DIR__.'/../classes/system/SystemSettings.php';
+    require_once __DIR__.'/../classes/notifications/Notification.php';
     // $db is already available from layout.php
 }
 
@@ -44,4 +44,4 @@ $error_message = $_GET['error'] ?? '';
 
 $dashboard_url = $in_layout ? 'layout.php?page=dashboard' : '../dashboard/index.php';
 $book_url = $in_layout ? 'layout.php?page=book_appointment' : 'book_appointment.php';
-require __DIR__.'/../includes/student_appointments_view.php';
+require __DIR__.'/../includes/counseling/appointments_view.php';

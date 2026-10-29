@@ -1,12 +1,12 @@
 <?php
 if(!defined('IN_LAYOUT')){http_response_code(403);exit;}
-require_once __DIR__ . '/../../../classes/User.php';
-require_once __DIR__ . '/../../../classes/PersonalDataSheet.php';
+require_once __DIR__.'/../../../classes/identity/User.php';
+require_once __DIR__.'/../../../classes/records/PersonalDataSheet.php';
 
 $user_obj = new User($db);
 $pds = new PersonalDataSheet($db);
 
-require_once __DIR__.'/../../../includes/student_record_support.php';
+require_once __DIR__.'/../../../includes/students/record_support.php';
 $_SESSION['student_record_token']=$_SESSION['student_record_token']??bin2hex(random_bytes(32));
 if(isset($_POST['update_student_profile'])){
     try{

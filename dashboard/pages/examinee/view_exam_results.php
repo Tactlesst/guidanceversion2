@@ -1,6 +1,6 @@
 <?php
 if(!defined('IN_LAYOUT')||!in_array($role,['examinee','student'],true)){http_response_code(403);return;}
-require_once __DIR__.'/../../../classes/ExamineePortal.php';$portal=new ExamineePortal($db);$apps=$portal->applications((int)$uid);$active=ExamineePortal::active($apps);$exE=static fn($v)=>htmlspecialchars((string)$v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');$_SESSION['booking_csrf']=$_SESSION['booking_csrf']??bin2hex(random_bytes(24));
+require_once __DIR__.'/../../../classes/examinations/ExamineePortal.php';$portal=new ExamineePortal($db);$apps=$portal->applications((int)$uid);$active=ExamineePortal::active($apps);$exE=static fn($v)=>htmlspecialchars((string)$v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');$_SESSION['booking_csrf']=$_SESSION['booking_csrf']??bin2hex(random_bytes(24));
 ?>
 <link rel="stylesheet" href="../assets/css/examinee-workspace.css?v=20261029">
 

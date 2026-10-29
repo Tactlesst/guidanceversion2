@@ -1,10 +1,10 @@
 <?php
 if(!defined('IN_LAYOUT')){http_response_code(403);exit;}
-require_once __DIR__ . '/../../../config/database.php';
-require_once __DIR__ . '/../../../classes/CounselingAppointment.php';
-require_once __DIR__ . '/../../../classes/CounselingRemarks.php';
-require_once __DIR__ . '/../../../classes/User.php';
-require_once __DIR__ . '/../../../classes/Notification.php';
+require_once __DIR__.'/../../../config/database.php';
+require_once __DIR__.'/../../../classes/counseling/CounselingAppointment.php';
+require_once __DIR__.'/../../../classes/counseling/CounselingRemarks.php';
+require_once __DIR__.'/../../../classes/identity/User.php';
+require_once __DIR__.'/../../../classes/notifications/Notification.php';
 
 date_default_timezone_set('Asia/Manila');
 if(isset($_POST['reschedule_appointment'])||isset($_POST['schedule_followup'])){

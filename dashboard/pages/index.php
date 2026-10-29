@@ -130,7 +130,7 @@ if ($role === 'student') {
 ?>
 
 <?php if (in_array($role, ['super_admin','admin','guidance_advocate'])): ?>
-<?php include __DIR__ . '/../partials/overview.php'; ?>
+<?php include __DIR__.'/../partials/overview.php'; ?>
 
 <?php elseif ($role === 'examinee'): ?>
 <?php include __DIR__.'/examinee/overview.php';?>
