@@ -74,20 +74,37 @@ class ExamBooking {
         }catch(Throwable $e){if($this->db->inTransaction())$this->db->rollBack();throw $e;}finally{$this->db->query("SELECT RELEASE_LOCK('guidanceversion2_exam_booking')");}
     }
 
-    public function book($userId,$date,$time,$school,$program=null,$scheduleId=null){
+    public function gradeOptions(?string $type=null):array {
+        $options=$this->db->query("SELECT DISTINCT g.name,g.sort_order FROM academic_grade_levels g JOIN academic_departments d ON d.id=g.department_id WHERE g.is_active=1 AND d.is_active=1 AND TRIM(g.name)<>'' ORDER BY g.sort_order,g.name")->fetchAll(PDO::FETCH_COLUMN);return in_array(strtolower(trim((string)$type)),['new','new student'],true)?array_values(array_intersect($options,['Grade 1','Grade 7','Grade 11','1st Year College'])):array_values(array_unique($options));
+    }
+    private function applicant(int $uid,bool $lock=false):array {
+        $q=$this->db->prepare("SELECT grade_level_applying,examinee_type FROM users WHERE id=? AND role='examinee' AND is_active=1 AND COALESCE(archived,0)=0".($lock?' FOR UPDATE':''));$q->execute([$uid]);$r=$q->fetch(PDO::FETCH_ASSOC);if(!$r)throw new RuntimeException('Only an active examinee account can use this application.');return $r;
+    }
+    public function applicantContext(int $uid):array {
+        $r=$this->applicant($uid);$q=$this->db->prepare("SELECT 1 FROM entrance_exam_appointments WHERE user_id=? AND (status IN ('pending','confirmed','rescheduled','awaiting_results','completed') OR reschedule_pending=1) LIMIT 1");$q->execute([$uid]);return ['grade'=>trim((string)$r['grade_level_applying']),'type'=>$r['examinee_type'],'locked'=>(bool)$q->fetchColumn()];
+    }
+    private function validatedGrade($grade,?string $type=null):string {
+        if(!is_string($grade)||!in_array(trim($grade),$this->gradeOptions($type),true))throw new InvalidArgumentException('Choose the grade or year level you are applying for.');return trim($grade);
+    }
+    public function updateApplicantGrade(int $uid,$grade):string {
+        if(!$this->db->query("SELECT GET_LOCK('guidanceversion2_exam_booking',5)")->fetchColumn())throw new RuntimeException('Your application is being updated. Try again shortly.');
+        try{$this->db->beginTransaction();$q=$this->db->prepare("SELECT id FROM entrance_exam_appointments WHERE user_id=? AND (status IN ('pending','confirmed','rescheduled','awaiting_results','completed') OR reschedule_pending=1) LIMIT 1 FOR UPDATE");$q->execute([$uid]);if($q->fetchColumn())throw new RuntimeException('An active or completed exam application already uses your applicant level. Contact the Guidance Office for corrections.');$applicant=$this->applicant($uid,true);$value=$this->validatedGrade($grade,$applicant['examinee_type']);$this->db->prepare('UPDATE users SET grade_level_applying=? WHERE id=?')->execute([$value,$uid]);require_once __DIR__.'/../system/SystemLogger.php';if(!(new SystemLogger($this->db))->info('Updated own applicant grade/year level.',$uid))throw new RuntimeException('The applicant update could not be recorded.');$this->db->commit();return $value;}catch(Throwable $e){if($this->db->inTransaction())$this->db->rollBack();throw $e;}finally{$this->db->query("SELECT RELEASE_LOCK('guidanceversion2_exam_booking')");}
+    }
+
+    public function book($userId,$date,$time,$school,$program=null,$scheduleId=null,$applicantGrade=null){
         $locked=$this->db->query("SELECT GET_LOCK('guidanceversion2_exam_booking',5)")->fetchColumn();if(!$locked)throw new RuntimeException('Booking is busy. Please try again.');
         try{
             $this->db->beginTransaction();
             if(!(new SystemSettings($this->db))->isEntranceExamEnabled())throw new RuntimeException('Entrance exam booking is currently closed.');
             $q=$this->db->prepare("SELECT id FROM entrance_exam_appointments WHERE user_id=? AND (status IN ('pending','confirmed','rescheduled','awaiting_results','completed') OR reschedule_pending=1) FOR UPDATE");$q->execute([$userId]);if($q->fetchColumn())throw new RuntimeException('You already have an active or completed entrance exam.');
-            $q=$this->db->prepare("SELECT grade_level_applying FROM users WHERE id=? AND role='examinee' AND is_active=1 AND COALESCE(archived,0)=0");$q->execute([$userId]);$grade=$q->fetchColumn();if(!$grade)throw new RuntimeException('Please complete your applicant grade level first.');
+            $applicant=$this->applicant((int)$userId,true);$grade=trim((string)$applicant['grade_level_applying']);$needsGrade=$grade==='';if($needsGrade)$grade=$this->validatedGrade($applicantGrade,$applicant['examinee_type']);elseif($applicantGrade!==null&&(!is_string($applicantGrade)||trim($applicantGrade)!==$grade))throw new InvalidArgumentException('Your saved applicant level is different. Use My profile to correct it before reserving an exam.');
             if(!is_string($school)||trim($school)===''||strlen($school)>100)throw new RuntimeException('Enter your previous school (maximum 100 characters).');
             if($program!==null&&(!is_string($program)||strlen($program)>100))throw new RuntimeException('Preferred program must be at most 100 characters.');
             if(!is_string($time))throw new RuntimeException('Choose a scheduled exam session.');
             if($scheduleId!==null&&!filter_var($scheduleId,FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]))throw new RuntimeException('Choose a valid scheduled exam session.');
             $availability=$this->availability($date);$matches=array_values(array_filter($availability['slots'],static fn($session)=>$session['value']===$time&&($scheduleId===null||$session['schedule_id']===(int)$scheduleId)));
             if(count($matches)!==1)throw new RuntimeException($availability['status']==='available'?'This exam session is unavailable. Choose a scheduled session again.':$availability['message']);
-            $selected=$matches[0];$q=$this->db->prepare("INSERT INTO entrance_exam_appointments(user_id,preferred_date,preferred_time,grade_level_applying,previous_school,preferred_program,slot_end_at,status,confirmed_at) VALUES(?,?,?,?,?,?,?,'confirmed',NOW())");$q->execute([$userId,$date,$selected['value'],$grade,trim($school),$program,$selected['end_at']]);$id=$this->db->lastInsertId();
+            $selected=$matches[0];if($needsGrade)$this->db->prepare('UPDATE users SET grade_level_applying=? WHERE id=?')->execute([$grade,$userId]);$q=$this->db->prepare("INSERT INTO entrance_exam_appointments(user_id,preferred_date,preferred_time,grade_level_applying,previous_school,preferred_program,slot_end_at,status,confirmed_at) VALUES(?,?,?,?,?,?,?,'confirmed',NOW())");$q->execute([$userId,$date,$selected['value'],$grade,trim($school),$program,$selected['end_at']]);$id=$this->db->lastInsertId();
             SubmissionNotifications::appointment($this->db,'exam',(int)$id);$this->db->commit();return $id;
         }catch(Throwable $e){if($this->db->inTransaction())$this->db->rollBack();throw $e;}
         finally{$this->db->query("SELECT RELEASE_LOCK('guidanceversion2_exam_booking')");}

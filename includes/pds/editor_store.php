@@ -63,6 +63,7 @@ final class PDSEditorStore {
                 if($field==='email'&&$value!==''&&!filter_var($value,FILTER_VALIDATE_EMAIL))throw new InvalidArgumentException('Enter a valid email address.');
                 $values[$field]=$value===''?null:$value;
             }
+            if($staffActor!==null)foreach(['student_date_signed','parent_date_signed'] as $paperSigningDate)if(!empty($values[$paperSigningDate])&&$values[$paperSigningDate]>date('Y-m-d'))throw new InvalidArgumentException('The paper signing date cannot be in the future.');
             if(array_key_exists('privacy_agreement',$post)){
                 if(!in_array($values['privacy_agreement'],[0,1],true))throw new InvalidArgumentException('Choose whether you agree to the privacy statement.');
                 $values['privacy_agreement']=($values['privacy_agreement']??0)===1?1:0;
@@ -84,9 +85,9 @@ final class PDSEditorStore {
             else {$values['user_id']=$uid;$fields=implode(',',array_map(static fn($field)=>"`$field`",array_keys($values)));$marks=implode(',',array_fill(0,count($values),'?'));$this->db->prepare("INSERT INTO pds ($fields) VALUES ($marks)")->execute(array_values($values));}
             foreach(PDSEditorSchema::RELATED as $group=>$definition)if(array_key_exists($group,$post)||array_key_exists('removed_'.$group,$post))$this->saveRelated($uid,$group,$definition,$post,$before[$group]);
             $after=$this->load($uid);
-            $annualReview=($post['_pds_finalize']??'')==='1';
+            $annualReview=$staffActor===null?(($post['_pds_finalize']??'')==='1'):(($post['_paper_finalize']??'')==='1');
             if($annualReview)PDSHistory::validateAnnualReview($after);
-            $version=$history->record($uid,$after,$annualReview?'annual_review':($before['pds']?'updated':'created'),$staffActor??$uid,$annualReview&&!$history->reviewComplete($uid,(string)$after['pds']['school_year']));
+            $version=$history->record($uid,$after,$staffActor!==null?'created':($annualReview?'annual_review':($before['pds']?'updated':'created')),$staffActor??$uid,$annualReview&&!$history->reviewComplete($uid,(string)$after['pds']['school_year']));
             if((int)($priorVersion['id']??0)!==(int)$version['id']){if($staffActor===null)SubmissionNotifications::pds($this->db,$uid,(int)$version['id'],(string)($after['pds']['school_year']??''),$annualReview);else{SubmissionNotifications::paperPds($this->db,$uid,(int)$version['id']);require_once __DIR__.'/../../classes/system/StaffActivity.php';if(!(new StaffActivity($this->db))->record($staffActor,'pds_entry','create_paper_pds'))throw new RuntimeException('The paper-entry audit could not be saved.');}}
             if($annualReview)$history->reviewed($uid,(string)$after['pds']['school_year']);
             if($owned)$this->db->commit();else $this->db->exec('RELEASE SAVEPOINT pds_editor_save');return $after;

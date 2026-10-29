@@ -1,6 +1,10 @@
 <?php
 // Public release notes: visible product updates only. Keep student and staff data out.
 return [
+ ['version'=>'1.2.5','date'=>'2026-10-29','title'=>'Choose your applicant level before booking','items'=>[
+  ['Examinee profile','Examinees can choose or correct their applicant grade/year before reserving an exam. Official academic placement stays with the school.'],
+  ['Missing application details','Older accounts with a blank applicant level can choose one directly while booking. The selected level and reservation save together.'],
+  ['Consistent exam records','Active and completed exam applications keep their recorded level. Guidance handles corrections after booking.']]],
  ['version'=>'1.2.4','date'=>'2026-10-29','title'=>'Paper records and self-managed website updates','items'=>[
   ['Paper PDS entry','Authorized guidance staff can enter a student’s paper personal data sheet, photo and photographed signatures when no digital PDS exists.'],
   ['Patch notes editor','Superadmins can publish a new version and its changes while preserving earlier public releases.'],
